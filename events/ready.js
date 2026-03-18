@@ -1,6 +1,7 @@
 const { ActivityType, EmbedBuilder } = require('discord.js');
 const Reminder = require('../models/Reminder');
 const { startGiveawayPoller } = require('../utils/giveawayManager');
+const startActivityPing = require('../utils/activityPing');
 
 module.exports = {
     name: 'clientReady',
@@ -16,6 +17,9 @@ module.exports = {
 
         // Start giveaway polling loop
         startGiveawayPoller(client);
+
+        // Keep-alive activity ping
+        startActivityPing(client);
     }
 };
 
