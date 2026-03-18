@@ -1,4 +1,5 @@
 require('dotenv').config();
+const keepAlive = require('./keepalive');
 const { Client, GatewayIntentBits, Collection, Partials, ActivityType } = require('discord.js');
 const mongoose = require('mongoose');
 const fs = require('fs');
@@ -128,6 +129,7 @@ function loadEvents() {
 // Initialize bot
 async function init() {
     console.log('🚀 Starting Discord Bot...\n');
+    keepAlive();
 
     await connectDatabase();
     loadCommands();
