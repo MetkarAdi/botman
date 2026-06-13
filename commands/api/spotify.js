@@ -3,6 +3,13 @@ const { spotifyGet, formatTrackDuration } = require('../../utils/spotify');
 const { truncate } = require('../../utils/helpers');
 
 const SPOTIFY_GREEN = '#1DB954';
+const hardcodedClientId = '';
+const hardcodedClientSecret = '';
+const clientId = process.env.SPOTIFY_CLIENT_ID || hardcodedClientId;
+const clientSecret = process.env.SPOTIFY_CLIENT_SECRET || hardcodedClientSecret;
+
+if (clientId) process.env.SPOTIFY_CLIENT_ID = clientId;
+if (clientSecret) process.env.SPOTIFY_CLIENT_SECRET = clientSecret;
 
 module.exports = {
     name: 'spotify',
@@ -13,7 +20,7 @@ module.exports = {
     cooldown: 5,
 
     async execute(message, args, client) {
-        if (!process.env.SPOTIFY_CLIENT_ID || !process.env.SPOTIFY_CLIENT_SECRET) {
+        if (!clientId || !clientSecret) {
             return message.reply('❌ `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` are not set in `.env`.\nGet them free at https://developer.spotify.com/dashboard');
         }
 

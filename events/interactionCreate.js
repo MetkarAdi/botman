@@ -111,6 +111,9 @@ module.exports = {
             if (interaction.customId.startsWith('mafia_')) {
                 return mafiaInteraction.execute(interaction, client);
             }
+            else if (interaction.customId.startsWith('giveaway_')) {
+                return require('./giveawayInteraction').execute(interaction, client);
+            }
         }
 
         // Handle select menu interactions — delegate mafia ones

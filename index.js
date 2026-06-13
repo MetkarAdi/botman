@@ -73,7 +73,13 @@ function loadCommands() {
 
         for (const file of commandFiles) {
             const filePath = path.join(folderPath, file);
-            const command = require(filePath);
+            let command;
+            try {
+                command = require(filePath);
+            } catch (error) {
+                console.warn(`⚠️ Skipping command at ${filePath}:`, error.message);
+                continue;
+            }
 
             if ('name' in command && 'execute' in command) {
                 client.commands.set(command.name, command);
@@ -94,7 +100,13 @@ function loadSlashCommands() {
 
     for (const file of slashFiles) {
         const filePath = path.join(slashCommandsPath, file);
-        const command = require(filePath);
+        let command;
+        try {
+            command = require(filePath);
+        } catch (error) {
+            console.warn(`⚠️ Skipping slash command at ${filePath}:`, error.message);
+            continue;
+        }
 
         if ('data' in command && 'execute' in command) {
             client.slashCommands.set(command.data.name, command);

@@ -27,7 +27,7 @@ const mafiaGameSchema = new mongoose.Schema({
     dayNumber: { type: Number, default: 1 },
     players: [playerSchema],
     nominatedPlayer: { type: String, default: null },  // userId on trial
-    votes: { type: Map, of: String, default: {} },     // voterId -> 'guilty'|'innocent'
+    votes: { type: Map, of: String, default: {} },     // voterId -> nominated userId|'guilty'|'innocent'
     nightActions: { type: Map, of: String, default: {} }, // userId -> targetId
     joinMessageId: { type: String, default: null },
     phaseMessageId: { type: String, default: null },
@@ -35,7 +35,6 @@ const mafiaGameSchema = new mongoose.Schema({
     discussionTime: { type: Number, default: 150 },
     nightTime: { type: Number, default: 45 },
     voteTime: { type: Number, default: 45 },
-    phaseTimeout: { type: String, default: null },
     godfatherChecked: { type: Boolean, default: false }, // has godfather been detected once
     lastWill: { type: Map, of: String, default: {} },   // userId -> will text
     deadChat: { type: [String], default: [] },          // userIds who can spectate

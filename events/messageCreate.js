@@ -40,27 +40,25 @@ module.exports = {
         // ── AFK System ─────────────────────────────────────────────────────────
 
         // If the sender is AFK and they say something, remove their AFK status
-        if (!message.content.startsWith(prefix)) {
-            try {
-                const authorAfk = await Afk.findOne({ userId: message.author.id, guildId: message.guild.id });
-                if (authorAfk) {
-                    await Afk.deleteOne({ userId: message.author.id, guildId: message.guild.id });
+        try {
+            const authorAfk = await Afk.findOne({ userId: message.author.id, guildId: message.guild.id });
+            if (authorAfk) {
+                await Afk.deleteOne({ userId: message.author.id, guildId: message.guild.id });
 
-                    // Remove [AFK] from nickname if present
-                    try {
-                        const member = message.member;
-                        if (member.nickname?.startsWith('[AFK] ')) {
-                            await member.setNickname(member.nickname.replace('[AFK] ', ''));
-                        }
-                    } catch { /* No permissions — fine */ }
+                // Remove [AFK] from nickname if present
+                try {
+                    const member = message.member;
+                    if (member.nickname?.startsWith('[AFK] ')) {
+                        await member.setNickname(member.nickname.replace('[AFK] ', ''));
+                    }
+                } catch { /* No permissions — fine */ }
 
-                    const afkDuration = Math.floor((Date.now() - authorAfk.timestamp) / 1000);
-                    message.reply({ content: `👋 Welcome back! Your AFK status has been removed. (Away for <t:${Math.floor(authorAfk.timestamp.getTime() / 1000)}:R>)`, allowedMentions: { repliedUser: false } })
-                        .then(m => setTimeout(() => m.delete().catch(() => {}), 6000));
-                }
-            } catch (err) {
-                console.error('AFK removal error:', err);
+                const afkDuration = Math.floor((Date.now() - authorAfk.timestamp) / 1000);
+                message.reply({ content: `👋 Welcome back! Your AFK status has been removed. (Away for <t:${Math.floor(authorAfk.timestamp.getTime() / 1000)}:R>)`, allowedMentions: { repliedUser: false } })
+                    .then(m => setTimeout(() => m.delete().catch(() => {}), 6000));
             }
+        } catch (err) {
+            console.error('AFK removal error:', err);
         }
 
         // Check if any mentioned users are AFK

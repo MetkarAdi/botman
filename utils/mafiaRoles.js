@@ -128,7 +128,7 @@ function checkWinCondition(players) {
     const aliveNeutral = alive.filter(p => ['JESTER', 'EXECUTIONER'].includes(p.role));
 
     // Mafia wins when they equal or outnumber village (and no village left to stop them)
-    if (aliveMafia.length >= aliveVillage.length && aliveVillage.length + aliveNeutral.length <= aliveMafia.length) {
+    if (aliveMafia.length > 0 && aliveMafia.length >= aliveVillage.length + aliveNeutral.length) {
         return { winner: 'mafia', reason: 'The Mafia has taken over the town.' };
     }
 

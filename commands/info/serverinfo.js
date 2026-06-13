@@ -11,6 +11,21 @@ module.exports = {
     cooldown: 5,
 
     async execute(message, args, client, guildData) {
+        const serverId = args[0];
+        if (serverId) {
+            try {
+                await client.guilds.fetch(serverId);
+                const guild = await client.guilds.fetch({ guild: serverId, force: true });
+                await guild.members.fetch();
+                await guild.channels.fetch();
+
+                const embed = buildFullGuildEmbed(guild);
+                return message.reply({ embeds: [embed] });
+            } catch (error) {
+                return message.reply('❌ I am not in that server, or that server ID is invalid.');
+            }
+        }
+
         const guild = message.guild;
 
         // Count channel types
@@ -165,3 +180,77 @@ module.exports = {
         message.reply({ embeds: [embed] });
     }
 };
+
+function buildFullGuildEmbed(guild) {
+    const textChannels = guild.channels.cache.filter(c => c.type === ChannelType.GuildText).size;
+    const voiceChannels = guild.channels.cache.filter(c => c.type === ChannelType.GuildVoice).size;
+    const categoryChannels = guild.channels.cache.filter(c => c.type === ChannelType.GuildCategory).size;
+    const totalChannels = guild.channels.cache.size;
+
+    const totalMembers = guild.members.cache.size || guild.memberCount;
+    const botCount = guild.members.cache.filter(m => m.user.bot).size;
+    const humanCount = totalMembers - botCount;
+    const roleCount = guild.roles.cache.size - 1;
+    const emojiCount = guild.emojis.cache.size;
+    const stickerCount = guild.stickers.cache.size;
+
+    const verificationLevels = {
+        0: 'None',
+        1: 'Low',
+        2: 'Medium',
+        3: 'High',
+        4: 'Very High'
+    };
+
+    const contentFilters = {
+        0: 'Disabled',
+        1: 'Members without roles',
+        2: 'All members'
+    };
+
+    const mfaLevels = {
+        0: 'None',
+        1: 'Elevated'
+    };
+
+    const embed = new EmbedBuilder()
+        .setTitle(`Server Information - ${guild.name}`)
+        .setThumbnail(guild.iconURL({ dynamic: true, size: 256 }))
+        .setColor('#00FFFF')
+        .addFields(
+            { name: 'Name', value: guild.name, inline: true },
+            { name: 'ID', value: guild.id, inline: true },
+            { name: 'Owner', value: `<@${guild.ownerId}>`, inline: true },
+            { name: 'Created', value: `<t:${Math.floor(guild.createdTimestamp / 1000)}:D>`, inline: true },
+            { name: 'Members', value: `Total: ${formatNumber(totalMembers)}\nBots: ${formatNumber(botCount)}\nHumans: ${formatNumber(humanCount)}`, inline: true },
+            { name: 'Channels', value: `Text: ${textChannels}\nVoice: ${voiceChannels}\nCategories: ${categoryChannels}\nTotal: ${totalChannels}`, inline: true },
+            { name: 'Roles', value: formatNumber(roleCount), inline: true },
+            { name: 'Emojis', value: formatNumber(emojiCount), inline: true },
+            { name: 'Stickers', value: formatNumber(stickerCount), inline: true },
+            { name: 'Boost Tier', value: `${guild.premiumTier}`, inline: true },
+            { name: 'Boost Count', value: `${guild.premiumSubscriptionCount || 0}`, inline: true },
+            { name: 'Verification', value: verificationLevels[guild.verificationLevel] || `${guild.verificationLevel}`, inline: true },
+            { name: 'Content Filter', value: contentFilters[guild.explicitContentFilter] || `${guild.explicitContentFilter}`, inline: true },
+            { name: 'MFA Level', value: mfaLevels[guild.mfaLevel] || `${guild.mfaLevel}`, inline: true },
+            { name: 'Locale', value: guild.preferredLocale || 'None', inline: true }
+        )
+        .setTimestamp();
+
+    if (guild.description) {
+        embed.addFields({ name: 'Description', value: guild.description, inline: false });
+    }
+
+    if (guild.vanityURLCode) {
+        embed.addFields({ name: 'Vanity URL', value: `discord.gg/${guild.vanityURLCode}`, inline: true });
+    }
+
+    if (guild.features.length > 0) {
+        embed.addFields({ name: 'Features', value: guild.features.join(', '), inline: false });
+    }
+
+    if (guild.bannerURL()) {
+        embed.setImage(guild.bannerURL({ dynamic: true, size: 1024 }));
+    }
+
+    return embed;
+}

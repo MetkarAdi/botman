@@ -115,9 +115,8 @@ async function startNomination(game, guild, client) {
     const msg = await channel.send({ embeds: [embed], components: [row] });
     game.phaseMessageId = msg.id;
 
-    // Track nomination votes: nominee -> Set of voters
-    client.mafiaVotes = client.mafiaVotes || new Map();
-    client.mafiaVotes.set(guild.id, new Map());
+    // Track nomination votes as voterId -> nominated userId
+    game.votes = new Map();
 
     await game.save();
 
@@ -126,13 +125,16 @@ async function startNomination(game, guild, client) {
         if (!fresh || fresh.phase !== 'NOMINATION') return;
 
         // Check if anyone has majority
-        const nominationVotes = client.mafiaVotes?.get(guild.id);
-        if (nominationVotes) {
+        const nominationVotes = [...fresh.votes.values()];
+        if (nominationVotes.length) {
             const majority = Math.floor(fresh.players.filter(p => p.isAlive).length / 2) + 1;
             let topNominee = null;
             let topCount = 0;
-            for (const [nominee, voters] of nominationVotes.entries()) {
-                if (voters.size > topCount) { topCount = voters.size; topNominee = nominee; }
+            const voteCounts = new Map();
+            for (const nominee of nominationVotes) {
+                const count = (voteCounts.get(nominee) || 0) + 1;
+                voteCounts.set(nominee, count);
+                if (count > topCount) { topCount = count; topNominee = nominee; }
             }
             if (topNominee && topCount >= majority) {
                 fresh.nominatedPlayer = topNominee;

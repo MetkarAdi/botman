@@ -27,7 +27,7 @@ function startReminderPoller(client) {
     setInterval(async () => {
         try {
             const now = new Date();
-            const dueReminders = await Reminder.find({ remindAt: { $lte: now } });
+            const dueReminders = await Reminder.find({ remindAt: { $lte: now } }).limit(20);
 
             for (const reminder of dueReminders) {
                 try {

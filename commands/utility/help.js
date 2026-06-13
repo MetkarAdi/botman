@@ -1,6 +1,4 @@
 const { EmbedBuilder } = require('discord.js');
-const fs = require('fs');
-const path = require('path');
 
 module.exports = {
     name: 'help',
@@ -61,27 +59,28 @@ module.exports = {
             return message.reply({ embeds: [embed] });
         }
 
-        // Show all commands
-        const commandsPath = path.join(__dirname, '..');
-        const categories = fs.readdirSync(commandsPath).filter(folder =>
-            fs.statSync(path.join(commandsPath, folder)).isDirectory()
-        );
+        // Show all prefix commands
+        const categories = new Map();
+        for (const command of client.commands.values()) {
+            const category = command.category || 'uncategorized';
+            if (category.toLowerCase() === 'slash') continue;
+            if (!categories.has(category)) categories.set(category, []);
+            categories.get(category).push(command);
+        }
+
+        const commandCount = [...categories.values()].reduce((total, commands) => total + commands.length, 0);
 
         const embed = new EmbedBuilder()
-            .setTitle('📚 Command List')
-            .setDescription(`Use \`${prefix}help <command>\` for more info on a command.\nAlso supports slash commands with \`/\``)
+            .setTitle('Command List')
+            .setDescription(`Use \`${prefix}help <command>\` for more info on a command.`)
             .setColor('#00FFFF')
-            .setFooter({ text: `${client.commands.size} commands available` })
+            .setFooter({ text: `${commandCount} commands available` })
             .setTimestamp();
 
-        for (const category of categories) {
-            const commandFiles = fs.readdirSync(path.join(commandsPath, category))
-                .filter(file => file.endsWith('.js'));
-
-            const commands = commandFiles.map(file => {
-                const command = require(path.join(commandsPath, category, file));
-                return `\`${command.name}\``;
-            });
+        for (const [category, categoryCommands] of categories) {
+            const commands = categoryCommands
+                .sort((a, b) => a.name.localeCompare(b.name))
+                .map(command => `\`${command.name}\``);
 
             if (commands.length > 0) {
                 embed.addFields({

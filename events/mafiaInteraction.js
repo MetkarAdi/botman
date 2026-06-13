@@ -73,32 +73,26 @@ module.exports = {
             const nominatedPlayer = game.players.find(p => p.userId === nominated);
             if (!nominatedPlayer) return interaction.reply({ content: 'âŒ Invalid player.', ephemeral: true });
 
-            // Track nomination votes
-            client.mafiaVotes = client.mafiaVotes || new Map();
-            if (!client.mafiaVotes.has(guildId)) client.mafiaVotes.set(guildId, new Map());
-            const nomVotes = client.mafiaVotes.get(guildId);
-
-            // Remove voter's previous vote
-            for (const [nominee, voters] of nomVotes.entries()) {
-                voters.delete(interaction.user.id);
-            }
-
-            // Add new vote
-            if (!nomVotes.has(nominated)) nomVotes.set(nominated, new Set());
-            nomVotes.get(nominated).add(interaction.user.id);
+            // Track nomination votes as voterId -> nominated userId
+            game.votes.set(interaction.user.id, nominated);
+            await game.save();
 
             // Check for majority
             const alive = game.players.filter(p => p.isAlive);
             const majority = Math.floor(alive.length / 2) + 1;
-            const voteCount = nomVotes.get(nominated).size;
+            const nominationVotes = [...game.votes.values()];
+            const voteCount = nominationVotes.filter(vote => vote === nominated).length;
 
             // Build vote tally display
+            const voteCounts = new Map();
+            for (const nomineeId of nominationVotes) {
+                voteCounts.set(nomineeId, (voteCounts.get(nomineeId) || 0) + 1);
+            }
+
             const tallyLines = [];
-            for (const [nid, voters] of nomVotes.entries()) {
-                if (voters.size > 0) {
-                    const np = game.players.find(p => p.userId === nid);
-                    tallyLines.push(`â€¢ **${np?.username || nid}** â€” ${voters.size} vote(s)`);
-                }
+            for (const [nid, count] of voteCounts.entries()) {
+                const np = game.players.find(p => p.userId === nid);
+                tallyLines.push(`• **${np?.username || nid}** — ${count} vote(s)`);
             }
 
             await interaction.reply({
