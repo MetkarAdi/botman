@@ -11,18 +11,25 @@ module.exports = {
     cooldown: 5,
 
     async execute(message, args, client, guildData) {
-        const serverId = args[0];
-        if (serverId) {
+        const target = args[0];
+        if (target) {
             try {
-                await client.guilds.fetch(serverId);
-                const guild = await client.guilds.fetch({ guild: serverId, force: true });
+                await client.guilds.fetch(target, { force: true });
+                const guild = await client.guilds.fetch({ guild: target, force: true });
                 await guild.members.fetch();
                 await guild.channels.fetch();
 
                 const embed = buildFullGuildEmbed(guild);
                 return message.reply({ embeds: [embed] });
             } catch (error) {
-                return message.reply('❌ I am not in that server, or that server ID is invalid.');
+                try {
+                    const inviteCode = parseInviteCode(target);
+                    const invite = await client.fetchInvite(inviteCode);
+                    const embed = buildInviteGuildEmbed(invite);
+                    return message.reply({ embeds: [embed] });
+                } catch (inviteError) {
+                    return message.reply('\u274C Could not find any server with that ID or invite code.');
+                }
             }
         }
 
@@ -253,4 +260,64 @@ function buildFullGuildEmbed(guild) {
     }
 
     return embed;
+}
+
+function buildInviteGuildEmbed(invite) {
+    const guild = invite.guild;
+    const channel = invite.channel;
+    const iconUrl = getInviteGuildIconUrl(guild);
+
+    const embed = new EmbedBuilder()
+        .setTitle(`Server Information - ${guild?.name || 'Unknown Server'}`)
+        .setColor('#00FFFF')
+        .addFields(
+            { name: 'Name', value: guild?.name || 'Unknown', inline: true },
+            { name: 'ID', value: guild?.id || 'Unknown', inline: true },
+            { name: 'Members', value: `${formatNumber(invite.approximateMemberCount || 0)}`, inline: true },
+            { name: 'Online', value: `${formatNumber(invite.approximatePresenceCount || 0)}`, inline: true },
+            { name: 'Channel', value: formatInviteChannel(channel), inline: true }
+        )
+        .setFooter({ text: '\u26A0\uFE0F Limited data — bot is not in this server' })
+        .setTimestamp();
+
+    if (invite.expiresTimestamp) {
+        embed.addFields({
+            name: 'Expires',
+            value: `<t:${Math.floor(invite.expiresTimestamp / 1000)}:R>`,
+            inline: true
+        });
+    }
+
+    if (iconUrl) {
+        embed.setThumbnail(iconUrl);
+    }
+
+    return embed;
+}
+
+function parseInviteCode(target) {
+    return target
+        .trim()
+        .replace(/^https?:\/\/(www\.)?discord\.gg\//i, '')
+        .replace(/^https?:\/\/(www\.)?discord(?:app)?\.com\/invite\//i, '')
+        .split(/[/?#]/)[0];
+}
+
+function getInviteGuildIconUrl(guild) {
+    if (!guild) return null;
+    if (typeof guild.iconURL === 'function') {
+        return guild.iconURL({ dynamic: true, size: 256 });
+    }
+    if (guild.icon && guild.id) {
+        const extension = guild.icon.startsWith('a_') ? 'gif' : 'png';
+        return `https://cdn.discordapp.com/icons/${guild.id}/${guild.icon}.${extension}?size=256`;
+    }
+    return null;
+}
+
+function formatInviteChannel(channel) {
+    if (!channel) return 'Unknown';
+    if (channel.name) return `#${channel.name}`;
+    if (channel.id) return `<#${channel.id}>`;
+    return 'Unknown';
 }
