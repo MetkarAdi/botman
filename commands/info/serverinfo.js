@@ -24,7 +24,7 @@ module.exports = {
             } catch (error) {
                 try {
                     const inviteCode = parseInviteCode(target);
-                    const invite = await client.fetchInvite(inviteCode);
+                    const invite = await client.fetchInvite(inviteCode, { withCounts: true });
                     const embed = buildInviteGuildEmbed(invite);
                     return message.reply({ embeds: [embed] });
                 } catch (inviteError) {
@@ -298,6 +298,8 @@ function buildInviteGuildEmbed(invite) {
     const guild = invite.guild;
     const channel = invite.channel;
     const iconUrl = getInviteGuildIconUrl(guild);
+    const memberCount = invite.memberCount ?? null;
+    const presenceCount = invite.presenceCount ?? null;
 
     const embed = new EmbedBuilder()
         .setTitle(`Server Information - ${guild?.name || 'Unknown Server'}`)
@@ -305,8 +307,8 @@ function buildInviteGuildEmbed(invite) {
         .addFields(
             { name: 'Name', value: guild?.name || 'Unknown', inline: true },
             { name: 'ID', value: guild?.id || 'Unknown', inline: true },
-            { name: 'Members', value: `${formatNumber(invite.approximateMemberCount || 0)}`, inline: true },
-            { name: 'Online', value: `${formatNumber(invite.approximatePresenceCount || 0)}`, inline: true },
+            { name: 'Members', value: memberCount == null ? 'Unknown' : `${formatNumber(memberCount)}`, inline: true },
+            { name: 'Online', value: presenceCount == null ? 'Unknown' : `${formatNumber(presenceCount)}`, inline: true },
             { name: 'Channel', value: formatInviteChannel(channel), inline: true }
         )
         .setFooter({ text: '\u26A0\uFE0F Limited data — bot is not in this server' })
