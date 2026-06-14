@@ -5,8 +5,9 @@ module.exports = {
         .addUserOption(o => o.setName('user').setDescription('User to look up')),
     category: 'info',
     async execute(interaction, client, guildData) {
+        await interaction.deferReply();
         const t = interaction.options.getUser('user');
-        const m = { reply: o => interaction.reply(o), author: interaction.user, guild: interaction.guild, member: interaction.member, mentions: { users: { first: () => t } } };
+        const m = { reply: o => interaction.editReply(o), author: interaction.user, guild: interaction.guild, member: interaction.member, mentions: { users: { first: () => t } } };
         await cmd.execute(m, [], client, guildData);
     }
 };

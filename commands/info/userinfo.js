@@ -14,15 +14,18 @@ module.exports = {
 
     async execute(message, args, client, guildData) {
         let target;
+        let userId;
 
         // Try to get user from mention
         if (message.mentions.users.first()) {
             target = message.mentions.users.first();
+            userId = target.id;
         }
         // Try to get user from ID
         else if (args[0]) {
             try {
-                target = await client.users.fetch(args[0]);
+                userId = args[0];
+                target = await client.users.fetch(userId, { force: true });
             } catch (error) {
                 return message.reply('❌ Could not find a user with that ID.');
             }
@@ -30,6 +33,7 @@ module.exports = {
         // Default to message author
         else {
             target = message.author;
+            userId = target.id;
         }
 
         if (!target) {
@@ -38,7 +42,7 @@ module.exports = {
 
         // Force fetch to get banner and accent color
         try {
-            target = await client.users.fetch(target.id, { force: true });
+            target = await client.users.fetch(userId, { force: true });
         } catch (error) {
             console.error('Error force-fetching user:', error);
         }
@@ -53,7 +57,7 @@ module.exports = {
         const embed = new EmbedBuilder()
             .setTitle(`👤 User Information - ${target.username}`)
             .setThumbnail(target.displayAvatarURL({ dynamic: true, size: 256 }))
-            .setColor(member?.displayHexColor || target.accentColor || '#00FFFF')
+            .setColor(member?.displayHexColor || '#00FFFF')
             .addFields(
                 { name: '📝 Username', value: target.username, inline: true },
                 { name: '🏷️ Discriminator', value: target.discriminator !== '0' ? `#${target.discriminator}` : 'None', inline: true },
@@ -80,6 +84,38 @@ module.exports = {
                 value: `<t:${joinedAt}:F> (<t:${joinedAt}:R>)`,
                 inline: false
             });
+
+            const memberFlags = member.flags?.toArray().join(', ') || 'None';
+            embed.addFields(
+                { name: 'Member Flags', value: memberFlags, inline: true },
+                { name: 'Voice Channel', value: member.voice.channel?.name || 'Not in voice', inline: true }
+            );
+
+            if (member.communicationDisabledUntil) {
+                embed.addFields({
+                    name: 'Timeout',
+                    value: `<t:${Math.floor(member.communicationDisabledUntil.getTime() / 1000)}:R>`,
+                    inline: true
+                });
+            }
+
+            if (member.pending) {
+                embed.addFields({
+                    name: 'Membership Gate',
+                    value: '⚠️ Pending',
+                    inline: true
+                });
+            }
+
+            const guildAvatarURL = member.avatarURL({ dynamic: true, size: 256 });
+            const globalAvatarURL = target.displayAvatarURL({ dynamic: true, size: 256 });
+            if (guildAvatarURL && guildAvatarURL !== globalAvatarURL) {
+                embed.addFields({
+                    name: 'Server Avatar',
+                    value: `[Click to view](${guildAvatarURL})`,
+                    inline: true
+                });
+            }
 
             // Add roles
             const roles = member.roles.cache
@@ -190,12 +226,12 @@ module.exports = {
             embed.setDescription('⚠️ This user is **not in this server**. Showing basic info only.');
         }
 
-        // Show banner if user has one (requires Nitro)
+        // Show global banner if user has one (requires Nitro)
         const bannerURL = target.bannerURL({ dynamic: true, size: 1024 });
         if (bannerURL) {
             embed.setImage(bannerURL);
             embed.addFields({
-                name: '🖼️ Banner',
+                name: 'Global Banner',
                 value: `[Click to view](${bannerURL})`,
                 inline: true
             });

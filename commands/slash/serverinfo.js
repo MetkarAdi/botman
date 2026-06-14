@@ -6,10 +6,10 @@ module.exports = {
     category: 'info',
     async execute(interaction, client, guildData) {
         const target = interaction.options.getString('target');
-        if (target) await interaction.deferReply();
+        await interaction.deferReply();
 
         const m = {
-            reply: o => target ? interaction.editReply(o) : interaction.reply(o),
+            reply: o => interaction.editReply(o),
             author: interaction.user,
             guild: interaction.guild,
             member: interaction.member

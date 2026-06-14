@@ -33,7 +33,9 @@ module.exports = {
             }
         }
 
-        const guild = message.guild;
+        let guild = message.guild;
+        guild = await guild.fetch();
+        const vanity = await guild.fetchVanityData().catch(() => null);
 
         // Count channel types
         const textChannels = guild.channels.cache.filter(c => c.type === ChannelType.GuildText).size;
@@ -135,6 +137,36 @@ module.exports = {
             value: `Verification: ${verificationLevels[guild.verificationLevel]}\nContent Filter: ${contentFilters[guild.explicitContentFilter]}\nNotifications: ${defaultNotifications[guild.defaultMessageNotifications]}`,
             inline: true
         });
+
+        embed.addFields(
+            {
+                name: 'AFK Channel',
+                value: guild.afkChannel ? `${guild.afkChannel.name} (${guild.afkTimeout / 60} mins)` : 'None',
+                inline: true
+            },
+            { name: 'NSFW Level', value: `${guild.nsfwLevel}`, inline: true },
+            {
+                name: 'Default Notifications',
+                value: guild.defaultMessageNotifications === 0 ? 'All Messages' : 'Only Mentions',
+                inline: true
+            },
+            { name: 'Rules Channel', value: guild.rulesChannel?.toString() || 'None', inline: true },
+            { name: 'System Channel', value: guild.systemChannel?.toString() || 'None', inline: true },
+            { name: 'Max Members', value: guild.maximumMembers?.toLocaleString() || 'Unknown', inline: true },
+            { name: 'Scheduled Events', value: `${guild.scheduledEvents.cache.size}`, inline: true },
+            { name: 'Stickers', value: `${guild.stickers.cache.size}`, inline: true },
+            { name: 'Verified', value: guild.verified ? '✅ Yes' : 'No', inline: true },
+            { name: 'Partnered', value: guild.partnered ? 'Yes' : 'No', inline: true },
+            { name: 'Boost Bar', value: guild.premiumProgressBarEnabled ? 'Enabled' : 'Disabled', inline: true }
+        );
+
+        if (vanity) {
+            embed.addFields({
+                name: 'Vanity Uses',
+                value: `${vanity.uses}`,
+                inline: true
+            });
+        }
 
         // Add features if any
         if (guild.features.length > 0) {
