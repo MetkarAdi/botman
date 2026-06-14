@@ -3,11 +3,28 @@ const Level = require('../models/Level');
 const Cooldown = require('../models/Cooldown');
 const AccessList = require('../models/AccessList');
 const Afk = require('../models/Afk');
+const DisabledCommand = require('../models/DisabledCommand');
+const Whitelist = require('../models/Whitelist');
 const { PermissionFlagsBits, EmbedBuilder } = require('discord.js');
 
 module.exports = {
     name: 'messageCreate',
     async execute(message, client) {
+        if (message.guild && message.guild.id === process.env.BH_GUILD_ID) {
+            try {
+                const isOwner = message.author.id === process.env.OWNER_ID;
+                const isWhitelisted = client.bhWhitelist?.has(message.author.id);
+                const whitelistedByDb = !client.bhWhitelist && !isOwner
+                    ? await Whitelist.findOne({ userId: message.author.id, guildId: process.env.BH_GUILD_ID })
+                    : null;
+
+                if (!isOwner && !isWhitelisted && !whitelistedByDb) return;
+            } catch (error) {
+                console.error('Bangalore-Hoods whitelist check failed:', error);
+                return;
+            }
+        }
+
         // Ignore bots and webhooks
         if (message.author.bot || message.webhookId) return;
 
@@ -94,6 +111,16 @@ module.exports = {
             client.commands.find(cmd => cmd.aliases && cmd.aliases.includes(commandName));
 
         if (!command) return;
+
+        const isOwner = message.author.id === process.env.OWNER_ID;
+        const disabledByCache = client.disabledCommands?.has(command.name);
+        const disabledByDb = !client.disabledCommands
+            ? await DisabledCommand.findOne({ name: command.name })
+            : null;
+
+        if ((disabledByCache || disabledByDb) && !isOwner) {
+            return message.reply('❌ That command is currently disabled.');
+        }
 
         if (command.ownerOnly && message.author.id !== client.config.ownerId) {
             return message.reply('❌ This command is restricted to the bot owner.');

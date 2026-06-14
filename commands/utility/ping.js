@@ -9,10 +9,11 @@ module.exports = {
     cooldown: 5,
 
     async execute(message, args, client) {
-        const sent = await message.reply('🏓 Pinging...');
+        const sent = await message.channel.send('🏓 Pinging...');
 
-        const botLatency = sent.createdTimestamp - message.createdTimestamp;
-        const apiLatency = Math.round(client.ws.ping);
+        const apiLatency = sent.createdTimestamp - message.createdTimestamp;
+        const wsLatency = client.ws.ping;
+        const wsLatencyText = wsLatency === -1 ? 'Calculating...' : `${Math.round(wsLatency)}ms`;
 
         const getLatencyColor = (latency) => {
             if (latency < 100) return '#00FF00';
@@ -23,18 +24,18 @@ module.exports = {
         const embed = new EmbedBuilder()
             .setTitle('🏓 Pong!')
             .addFields(
-                { name: '🤖 Bot Latency', value: `${botLatency}ms`, inline: true },
+                { name: '🤖 Bot Latency', value: wsLatencyText, inline: true },
                 { name: '📡 API Latency', value: `${apiLatency}ms`, inline: true },
                 { name: '💾 Uptime', value: formatUptime(client.uptime), inline: false }
             )
-            .setColor(getLatencyColor(botLatency))
+            .setColor(getLatencyColor(apiLatency))
             .setTimestamp();
 
         try {
             await sent.edit({ content: null, embeds: [embed] });
         } catch (error) {
             console.error('Error editing ping message:', error);
-            await sent.edit({ content: `🏓 Pong! Bot: ${botLatency}ms | API: ${apiLatency}ms` });
+            await sent.edit({ content: `🏓 Pong! Bot: ${wsLatencyText} | API: ${apiLatency}ms` });
         }
     }
 };
@@ -43,7 +44,7 @@ function formatUptime(ms) {
     const seconds = Math.floor((ms / 1000) % 60);
     const minutes = Math.floor((ms / (1000 * 60)) % 60);
     const hours = Math.floor((ms / (1000 * 60 * 60)) % 24);
-    const days = Math.floor(ms / (1000 * 60 * 60 * 60 * 24));
+    const days = Math.floor(ms / (1000 * 60 * 60 * 24));
 
     const parts = [];
     if (days > 0) parts.push(`${days}d`);

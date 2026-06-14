@@ -3,14 +3,20 @@ const { EmbedBuilder } = require('discord.js');
 module.exports = {
     name: 'togglelevelling',
     aliases: ['togglelevel', 'tl'],
-    description: 'Toggle the levelling system on or off (Owner Only)',
+    description: 'Toggle the levelling system on or off',
     usage: 'togglelevelling',
-    category: 'owner',
-    ownerOnly: true,
+    category: 'settings',
     guildOnly: true,
     cooldown: 5,
 
     async execute(message, args, client, guildData) {
+        const canToggle = message.author.id === process.env.OWNER_ID ||
+            message.member.permissions.has('ManageMessages');
+
+        if (!canToggle) {
+            return message.reply('❌ You need the **Manage Messages** permission to use this command.');
+        }
+
         guildData.levellingEnabled = !guildData.levellingEnabled;
         await guildData.save();
 

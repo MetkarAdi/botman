@@ -1,5 +1,7 @@
 const { ActivityType, EmbedBuilder } = require('discord.js');
 const Reminder = require('../models/Reminder');
+const DisabledCommand = require('../models/DisabledCommand');
+const Whitelist = require('../models/Whitelist');
 const { startGiveawayPoller } = require('../utils/giveawayManager');
 const startActivityPing = require('../utils/activityPing');
 
@@ -11,6 +13,22 @@ module.exports = {
         console.log(`📊 Serving ${client.guilds.cache.size} guild(s)`);
 
         client.user.setActivity('your server | >>help', { type: ActivityType.Watching });
+
+        try {
+            client.disabledCommands = new Set((await DisabledCommand.find()).map(d => d.name));
+            console.log(`Loaded ${client.disabledCommands.size} disabled command(s)`);
+        } catch (error) {
+            console.error('Failed to load disabled commands:', error);
+            client.disabledCommands = new Set();
+        }
+
+        try {
+            client.bhWhitelist = new Set((await Whitelist.find({ guildId: process.env.BH_GUILD_ID })).map(w => w.userId));
+            console.log(`Loaded ${client.bhWhitelist.size} Bangalore-Hoods whitelist entrie(s)`);
+        } catch (error) {
+            console.error('Failed to load Bangalore-Hoods whitelist:', error);
+            client.bhWhitelist = new Set();
+        }
 
         // Start reminder polling loop
         startReminderPoller(client);

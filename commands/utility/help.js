@@ -10,6 +10,7 @@ module.exports = {
 
     async execute(message, args, client, guildData) {
         const prefix = guildData?.prefix || client.config.defaultPrefix;
+        const isOwner = message.author.id === process.env.OWNER_ID;
 
         // If specific command requested
         if (args[0]) {
@@ -17,7 +18,7 @@ module.exports = {
             const command = client.commands.get(commandName) ||
                 client.commands.find(cmd => cmd.aliases && cmd.aliases.includes(commandName));
 
-            if (!command) {
+            if (!command || (!isOwner && (command.category === 'owner' || client.disabledCommands?.has(command.name)))) {
                 return message.reply('❌ That command doesn\'t exist!');
             }
 
@@ -64,6 +65,7 @@ module.exports = {
         for (const command of client.commands.values()) {
             const category = command.category || 'uncategorized';
             if (category.toLowerCase() === 'slash') continue;
+            if (!isOwner && (category === 'owner' || client.disabledCommands?.has(command.name))) continue;
             if (!categories.has(category)) categories.set(category, []);
             categories.get(category).push(command);
         }

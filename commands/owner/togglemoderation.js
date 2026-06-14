@@ -3,14 +3,20 @@ const { EmbedBuilder } = require('discord.js');
 module.exports = {
     name: 'togglemoderation',
     aliases: ['togglemod', 'tm'],
-    description: 'Toggle the moderation system on or off (Owner Only)',
+    description: 'Toggle the moderation system on or off',
     usage: 'togglemoderation',
-    category: 'owner',
-    ownerOnly: true,
+    category: 'settings',
     guildOnly: true,
     cooldown: 5,
 
     async execute(message, args, client, guildData) {
+        const canToggle = message.author.id === process.env.OWNER_ID ||
+            message.member.permissions.has('ManageMessages');
+
+        if (!canToggle) {
+            return message.reply('❌ You need the **Manage Messages** permission to use this command.');
+        }
+
         guildData.moderationEnabled = !guildData.moderationEnabled;
         await guildData.save();
 

@@ -1,90 +1,76 @@
 const { EmbedBuilder } = require('discord.js');
-const AccessList = require('../../models/AccessList');
+const Whitelist = require('../../models/Whitelist');
 
 module.exports = {
     name: 'whitelist',
     aliases: ['wl'],
-    description: 'Whitelist a user to use moderation commands (Owner Only)',
-    usage: 'whitelist <@user or user_id> [reason]',
+    description: 'Manage the Bangalore-Hoods bot whitelist',
+    usage: 'whitelist <add|remove|list> [@user]',
     category: 'owner',
     ownerOnly: true,
     guildOnly: false,
     cooldown: 5,
 
     async execute(message, args, client) {
-        if (!args[0]) {
-            // Show all whitelisted users
-            const whitelist = await AccessList.find({ type: 'whitelist' });
+        if (message.author.id !== process.env.OWNER_ID) {
+            return message.reply('❌ Owner only.');
+        }
 
-            if (whitelist.length === 0) {
-                return message.reply('📋 No users are currently whitelisted.');
-            }
+        const subcommand = args[0]?.toLowerCase();
 
-            const list = await Promise.all(whitelist.map(async (entry, index) => {
-                const user = await client.users.fetch(entry.userId).catch(() => null);
-                return `**${index + 1}.** ${user ? `${user.tag}` : entry.userId}\n> Reason: ${entry.reason}\n> By: ${entry.addedBy}`;
-            }));
+        if (subcommand === 'add') {
+            const target = await resolveUser(message, args[1], client);
+            if (!target) return message.reply('❌ Please mention a user or provide a valid user ID.');
+
+            await Whitelist.updateOne(
+                { userId: target.id },
+                { $set: { userId: target.id, guildId: process.env.BH_GUILD_ID } },
+                { upsert: true }
+            );
+
+            client.bhWhitelist ||= new Set();
+            client.bhWhitelist.add(target.id);
+
+            return message.reply(`✅ ${target.tag} has been whitelisted for Bangalore-Hoods.`);
+        }
+
+        if (subcommand === 'remove') {
+            const target = await resolveUser(message, args[1], client);
+            if (!target) return message.reply('❌ Please mention a user or provide a valid user ID.');
+
+            await Whitelist.deleteOne({ userId: target.id, guildId: process.env.BH_GUILD_ID });
+
+            client.bhWhitelist ||= new Set();
+            client.bhWhitelist.delete(target.id);
+
+            return message.reply(`✅ ${target.tag} has been removed from the whitelist.`);
+        }
+
+        if (subcommand === 'list') {
+            const entries = await Whitelist.find({ guildId: process.env.BH_GUILD_ID }).sort({ userId: 1 });
+            const description = entries.length
+                ? entries.map(entry => `<@${entry.userId}>`).join('\n')
+                : 'No users are currently whitelisted.';
 
             const embed = new EmbedBuilder()
-                .setTitle('📋 Whitelisted Users')
-                .setDescription(list.join('\n\n'))
+                .setTitle('Bangalore-Hoods Whitelist')
+                .setDescription(description)
                 .setColor('#00FF00')
-                .setFooter({ text: `${whitelist.length} user(s) whitelisted` })
+                .setFooter({ text: `${entries.length} user(s) whitelisted` })
                 .setTimestamp();
 
             return message.reply({ embeds: [embed] });
         }
 
-        // Get target user
-        let target;
-        if (message.mentions.users.first()) {
-            target = message.mentions.users.first();
-        } else {
-            try {
-                target = await client.users.fetch(args[0]);
-            } catch (error) {
-                return message.reply('❌ Could not find a user with that ID.');
-            }
-        }
-
-        if (!target) {
-            return message.reply('❌ Please mention a user or provide a valid user ID.');
-        }
-
-        // Check if already whitelisted
-        const existing = await AccessList.findOne({ userId: target.id, type: 'whitelist' });
-        if (existing) {
-            return message.reply(`❌ **${target.tag}** is already whitelisted.`);
-        }
-
-        const reason = args.slice(1).join(' ') || 'No reason provided';
-
-        try {
-            const whitelist = new AccessList({
-                userId: target.id,
-                type: 'whitelist',
-                reason: reason,
-                addedBy: message.author.tag
-            });
-
-            await whitelist.save();
-
-            const embed = new EmbedBuilder()
-                .setTitle('✅ User Whitelisted')
-                .setDescription(`**${target.tag}** has been whitelisted.`)
-                .addFields(
-                    { name: '👤 User', value: `${target.tag} (${target.id})`, inline: true },
-                    { name: '📝 Reason', value: reason, inline: true },
-                    { name: '👮 Whitelisted By', value: message.author.tag, inline: true }
-                )
-                .setColor('#00FF00')
-                .setThumbnail(target.displayAvatarURL())
-                .setTimestamp();
-
-            message.reply({ embeds: [embed] });
-        } catch (error) {
-            console.error('Error whitelisting user:', error);
-            message.reply('❌ An error occurred while whitelisting the user.');
-        }
+        return message.reply('Usage: `>>whitelist add @user`, `>>whitelist remove @user`, `>>whitelist list`');
     }
 };
+
+async function resolveUser(message, arg, client) {
+    const mentioned = message.mentions.users.first();
+    if (mentioned) return mentioned;
+    if (!arg) return null;
+
+    const userId = arg.replace(/[<@!>]/g, '');
+    return client.users.fetch(userId).catch(() => null);
+}
