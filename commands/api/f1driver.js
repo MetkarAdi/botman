@@ -1,5 +1,6 @@
 const { EmbedBuilder } = require('discord.js');
 const axios = require('axios');
+const { logError } = require('../../utils/errorLogger');
 
 const JOLPICA_STANDINGS_URL = 'https://api.jolpi.ca/ergast/f1/current/driverStandings.json';
 const OPENF1_DRIVERS_URL = 'https://api.openf1.org/v1/drivers';
@@ -30,7 +31,7 @@ module.exports = {
                 return loading.edit({ content: null, embeds: [embed] });
             }
         } catch (error) {
-            console.error('Jolpica F1 driver error:', error.response?.data || error.message);
+            await logError(client, error, 'f1driver — jolpica');
         }
 
         try {
@@ -41,7 +42,7 @@ module.exports = {
                 return loading.edit({ content: null, embeds: [embed] });
             }
         } catch (error) {
-            console.error('OpenF1 F1 driver fallback error:', error.response?.data || error.message);
+            await logError(client, error, 'f1driver — openf1');
         }
 
         try {
@@ -52,7 +53,7 @@ module.exports = {
                 return loading.edit({ content: null, embeds: [embed] });
             }
         } catch (error) {
-            console.error('API-Sports F1 driver fallback error:', error.response?.data || error.message);
+            await logError(client, error, 'f1driver — api-sports');
         }
 
         return loading.edit('❌ Driver not found. Try their last name or 3-letter code (e.g. VER, HAM).');

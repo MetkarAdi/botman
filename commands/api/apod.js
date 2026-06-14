@@ -1,5 +1,6 @@
 const { EmbedBuilder } = require('discord.js');
 const axios = require('axios');
+const { logError } = require('../../utils/errorLogger');
 
 module.exports = {
     name: 'apod',
@@ -60,7 +61,7 @@ module.exports = {
             await loading.edit({ content: null, embeds: [embed] });
 
         } catch (error) {
-            console.error('NASA APOD error:', error.response?.data || error.message);
+            await logError(client, error, 'apod — main');
             if (error.response?.status === 400) {
                 return loading.edit('❌ Invalid date. APOD started on 1995-06-16, so use a date after that.');
             }

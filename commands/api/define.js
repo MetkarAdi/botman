@@ -1,6 +1,7 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType } = require('discord.js');
 const axios = require('axios');
 const { truncate } = require('../../utils/helpers');
+const { logError } = require('../../utils/errorLogger');
 
 module.exports = {
     name: 'define',
@@ -93,7 +94,7 @@ module.exports = {
             if (error.response?.status === 404) {
                 return loading.edit(`❌ No definition found for **${word}**. Check your spelling.`);
             }
-            console.error('Dictionary API error:', error.message);
+            await logError(client, error, 'define — main');
             loading.edit('❌ Failed to fetch definition. Try again later.');
         }
     }

@@ -1,5 +1,6 @@
 const { EmbedBuilder } = require('discord.js');
 const axios = require('axios');
+const { logError } = require('../../utils/errorLogger');
 
 const BASE_URL = 'https://v3.football.api-sports.io';
 const CACHE_TTL = 5 * 60 * 1000;
@@ -55,8 +56,8 @@ module.exports = {
                     return message.reply(getUsage());
             }
         } catch (error) {
-            console.error('Football API error:', error.response?.data || error.message);
-            return message.reply('❌ Could not fetch football data. Try again shortly.');
+            await logError(client, error, `football — ${subcommand || 'main'}`);
+            return message.reply(`❌ Could not fetch football data. Try again shortly.\n\`\`\`${error.message}\`\`\``);
         }
     }
 };
@@ -255,6 +256,7 @@ async function apiGet(path, params = {}) {
         headers: { 'x-apisports-key': process.env.FOOTBALL_API_KEY },
         timeout: 10000
     });
+    console.log(`[Football] GET ${url} → ${res.status}`);
 
     cache.set(url, { data: res.data, fetchedAt: Date.now() });
     return res.data;

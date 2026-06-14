@@ -1,5 +1,6 @@
 const { EmbedBuilder } = require('discord.js');
 const axios = require('axios');
+const { logError } = require('../../utils/errorLogger');
 
 const JOLPICA_NEXT_URL = 'https://api.jolpi.ca/ergast/f1/current/next.json';
 const JOLPICA_SCHEDULE_URL = 'https://api.jolpi.ca/ergast/f1/current.json';
@@ -23,7 +24,7 @@ module.exports = {
             const embed = buildJolpicaEmbed(nextRace);
             return loading.edit({ content: null, embeds: [embed] });
         } catch (error) {
-            console.error('Jolpica next F1 race error:', error.response?.data || error.message);
+            await logError(client, error, 'f1next — jolpica');
         }
 
         try {
@@ -31,7 +32,7 @@ module.exports = {
             const embed = buildOpenF1Embed(nextMeeting);
             return loading.edit({ content: null, embeds: [embed] });
         } catch (error) {
-            console.error('OpenF1 next F1 race fallback error:', error.response?.data || error.message);
+            await logError(client, error, 'f1next — openf1');
         }
 
         try {
@@ -39,7 +40,7 @@ module.exports = {
             const embed = buildApiSportsEmbed(nextRace);
             return loading.edit({ content: null, embeds: [embed] });
         } catch (error) {
-            console.error('API-Sports next F1 race fallback error:', error.response?.data || error.message);
+            await logError(client, error, 'f1next — api-sports');
             return loading.edit('❌ Could not fetch next race info.');
         }
     }

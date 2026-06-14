@@ -1,5 +1,6 @@
 const { EmbedBuilder } = require('discord.js');
 const axios = require('axios');
+const { logError } = require('../../utils/errorLogger');
 
 const JOLPICA_RESULTS_URL = 'https://api.jolpi.ca/ergast/f1/current/last/results.json';
 const OPENF1_BASE_URL = 'https://api.openf1.org/v1';
@@ -21,7 +22,7 @@ module.exports = {
             const embed = buildJolpicaEmbed(results);
             return loading.edit({ content: null, embeds: [embed] });
         } catch (error) {
-            console.error('Jolpica F1 results error:', error.response?.data || error.message);
+            await logError(client, error, 'f1results — jolpica');
         }
 
         try {
@@ -29,7 +30,7 @@ module.exports = {
             const embed = buildOpenF1Embed(results);
             return loading.edit({ content: null, embeds: [embed] });
         } catch (error) {
-            console.error('OpenF1 F1 results fallback error:', error.response?.data || error.message);
+            await logError(client, error, 'f1results — openf1');
         }
 
         try {
@@ -37,7 +38,7 @@ module.exports = {
             const embed = buildApiSportsEmbed(results);
             return loading.edit({ content: null, embeds: [embed] });
         } catch (error) {
-            console.error('API-Sports F1 results fallback error:', error.response?.data || error.message);
+            await logError(client, error, 'f1results — api-sports');
             return loading.edit('❌ Could not fetch race results.');
         }
     }

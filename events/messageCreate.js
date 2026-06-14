@@ -6,6 +6,7 @@ const Afk = require('../models/Afk');
 const DisabledCommand = require('../models/DisabledCommand');
 const Whitelist = require('../models/Whitelist');
 const { PermissionFlagsBits, EmbedBuilder } = require('discord.js');
+const { logError } = require('../utils/errorLogger');
 
 module.exports = {
     name: 'messageCreate',
@@ -122,6 +123,15 @@ module.exports = {
             return message.reply('❌ That command is currently disabled.');
         }
 
+        const guildDisabled = client.guildDisabled?.get(message.guild.id);
+        if (
+            guildDisabled &&
+            !isOwner &&
+            (guildDisabled.commands.has(command.name) || guildDisabled.categories.has(command.category))
+        ) {
+            return message.reply('❌ That command is disabled in this server.');
+        }
+
         if (command.ownerOnly && message.author.id !== client.config.ownerId) {
             return message.reply('❌ This command is restricted to the bot owner.');
         }
@@ -179,8 +189,8 @@ module.exports = {
         try {
             await command.execute(message, args, client, guildData);
         } catch (error) {
-            console.error(`Error executing command ${command.name}:`, error);
-            message.reply('❌ There was an error executing that command!');
+            await logError(client, error, `messageCreate — ${command.name}`);
+            message.reply('❌ An error occurred while running that command.');
         }
     }
 };

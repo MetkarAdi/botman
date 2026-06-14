@@ -1,5 +1,6 @@
 const { EmbedBuilder } = require('discord.js');
 const axios = require('axios');
+const { logError } = require('../../utils/errorLogger');
 
 const OPENF1_BASE_URL = 'https://api.openf1.org/v1';
 const API_SPORTS_BASE_URL = 'https://v1.formula-1.api-sports.io';
@@ -33,7 +34,7 @@ module.exports = {
             const embed = buildLiveEmbed(session, liveData);
             return loading.edit({ content: null, embeds: [embed] });
         } catch (error) {
-            console.error('OpenF1 live session error:', error.response?.data || error.message);
+            await logError(client, error, 'f1live — openf1');
         }
 
         try {
@@ -46,7 +47,7 @@ module.exports = {
             const embed = buildApiSportsLiveEmbed(apiSportsLive);
             return loading.edit({ content: null, embeds: [embed] });
         } catch (error) {
-            console.error('API-Sports live F1 fallback error:', error.response?.data || error.message);
+            await logError(client, error, 'f1live — api-sports');
             return loading.edit('❌ Could not fetch live F1 data right now.');
         }
     }

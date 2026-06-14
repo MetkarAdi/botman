@@ -1,5 +1,6 @@
 const { EmbedBuilder } = require('discord.js');
 const axios = require('axios');
+const { logError } = require('../../utils/errorLogger');
 
 module.exports = {
     name: 'advice',
@@ -46,7 +47,7 @@ module.exports = {
             await loading.edit({ content: null, embeds: [embed] });
 
         } catch (error) {
-            console.error('Advice API error:', error.message);
+            await logError(client, error, 'advice — main');
             loading.edit('❌ Failed to fetch advice. Try again later.');
         }
     }

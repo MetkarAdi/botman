@@ -1,5 +1,6 @@
 const { EmbedBuilder } = require('discord.js');
 const axios = require('axios');
+const { logError } = require('../../utils/errorLogger');
 
 const JOLPICA_URL = 'https://api.jolpi.ca/ergast/f1/current/driverStandings.json';
 const OPENF1_BASE_URL = 'https://api.openf1.org/v1';
@@ -21,7 +22,7 @@ module.exports = {
             const embed = buildStandingsEmbed(standings, 'Source: Jolpica');
             return loading.edit({ content: null, embeds: [embed] });
         } catch (error) {
-            console.error('Jolpica F1 standings error:', error.response?.data || error.message);
+            await logError(client, error, 'f1standings — jolpica');
         }
 
         try {
@@ -29,7 +30,7 @@ module.exports = {
             const embed = buildStandingsEmbed(standings, 'Source: OpenF1 (fallback)');
             return loading.edit({ content: null, embeds: [embed] });
         } catch (error) {
-            console.error('OpenF1 fallback standings error:', error.response?.data || error.message);
+            await logError(client, error, 'f1standings — openf1');
         }
 
         try {
@@ -37,7 +38,7 @@ module.exports = {
             const embed = buildStandingsEmbed(standings, 'Source: API-Sports (fallback)');
             return loading.edit({ content: null, embeds: [embed] });
         } catch (error) {
-            console.error('API-Sports fallback standings error:', error.response?.data || error.message);
+            await logError(client, error, 'f1standings — api-sports');
             return loading.edit('❌ Could not fetch F1 standings right now.');
         }
     }

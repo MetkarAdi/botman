@@ -4,20 +4,36 @@ module.exports = {
     data: new SlashCommandBuilder()
         .setName('roleinfo')
         .setDescription('Shows information about a role')
-        .addRoleOption(option =>
+        .addStringOption(option =>
             option
                 .setName('role')
-                .setDescription('Role to inspect')
+                .setDescription('Role mention, name, or ID')
                 .setRequired(true)
         ),
     category: 'info',
 
     async execute(interaction) {
-        const role = interaction.options.getRole('role', true);
+        const arg = interaction.options.getString('role', true).trim();
+        const role = resolveRole(interaction, arg);
+
+        if (!role) {
+            return interaction.reply('❌ Role not found. Try mentioning the role, or providing its name or ID.');
+        }
+
         const embed = buildRoleInfoEmbed(role);
         return interaction.reply({ embeds: [embed] });
     }
 };
+
+function resolveRole(interaction, arg) {
+    const normalizedArg = arg.toLowerCase();
+    const roleId = arg.match(/^<@&(\d+)>$/)?.[1] || arg;
+
+    return interaction.guild.roles.cache.get(roleId) ||
+        interaction.guild.roles.cache.find(r => r.name.toLowerCase() === normalizedArg) ||
+        interaction.guild.roles.cache.find(r => r.name.toLowerCase().includes(normalizedArg)) ||
+        null;
+}
 
 function buildRoleInfoEmbed(role) {
     const onlineStatuses = new Set(['online', 'idle', 'dnd']);

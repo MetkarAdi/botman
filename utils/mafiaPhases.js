@@ -2,6 +2,7 @@ const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle,
         StringSelectMenuBuilder, PermissionFlagsBits } = require('discord.js');
 const MafiaGame = require('../models/MafiaGame');
 const { ROLES, checkWinCondition, buildRoleEmbed } = require('./mafiaRoles');
+const { logError } = require('./errorLogger');
 
 // Active phase timers: guildId -> timeout reference
 const phaseTimers = new Map();
@@ -13,9 +14,19 @@ function clearPhaseTimer(guildId) {
     }
 }
 
-function setPhaseTimer(guildId, ms, callback) {
+function setPhaseTimer(guildId, ms, callback, client = null) {
     clearPhaseTimer(guildId);
-    const t = setTimeout(callback, ms);
+    const t = setTimeout(async () => {
+        try {
+            await callback();
+        } catch (error) {
+            if (client) {
+                await logError(client, error, 'mafiaPhases');
+            } else {
+                console.error('[Mafia] Phase timer error:', error);
+            }
+        }
+    }, ms);
     phaseTimers.set(guildId, t);
 }
 
@@ -78,7 +89,7 @@ async function startDiscussion(game, guild, client) {
         const fresh = await MafiaGame.findOne({ guildId: guild.id });
         if (!fresh || fresh.phase !== 'DISCUSSION') return;
         await startNomination(fresh, guild, client);
-    });
+    }, client);
 }
 
 // ── Start Nomination Phase ────────────────────────────────────────────────────
@@ -150,7 +161,7 @@ async function startNomination(game, guild, client) {
             .setColor('#808080');
         await channel.send({ embeds: [noTrialEmbed] });
         await startNight(fresh, guild, client);
-    });
+    }, client);
 }
 
 // ── Start Voting Phase (trial) ────────────────────────────────────────────────
@@ -190,7 +201,7 @@ async function startVoting(game, guild, client) {
         const fresh = await MafiaGame.findOne({ guildId: guild.id });
         if (!fresh || fresh.phase !== 'VOTING') return;
         await resolveVote(fresh, guild, client);
-    });
+    }, client);
 }
 
 // ── Resolve Vote ──────────────────────────────────────────────────────────────
@@ -290,7 +301,7 @@ async function startNight(game, guild, client) {
         const fresh = await MafiaGame.findOne({ guildId: guild.id });
         if (!fresh || fresh.phase !== 'NIGHT') return;
         await resolveNight(fresh, guild, client);
-    });
+    }, client);
 }
 
 // ── Send Night DMs ────────────────────────────────────────────────────────────
@@ -361,7 +372,7 @@ async function sendNightDMs(game, guild, client) {
             });
 
         } catch (err) {
-            console.error(`[Mafia] Error sending night DM to ${player.username}:`, err.message);
+            await logError(client, err, 'mafiaPhases');
         }
     }
 }
@@ -460,7 +471,9 @@ async function resolveNight(game, guild, client) {
                     .setColor('#4169E1')
                     .setTimestamp();
                 await detUser.send({ embeds: [dmEmbed] });
-            } catch {}
+            } catch (err) {
+                await logError(client, err, 'mafiaPhases');
+            }
         }
     }
 
@@ -497,7 +510,9 @@ async function resolveNight(game, guild, client) {
                         .setTitle('⚖️ Your target has died!')
                         .setDescription('Your target was killed without being lynched. You are now a **🃏 Jester**. Get yourself lynched to win!')
                         .setColor('#9B59B6')] });
-                } catch {}
+                } catch (err) {
+                    await logError(client, err, 'mafiaPhases');
+                }
             }
         }
     }

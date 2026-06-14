@@ -9,18 +9,30 @@ module.exports = {
     guildOnly: true,
 
     async execute(message, args) {
-        const query = args.join(' ').toLowerCase();
-        const role = message.mentions.roles.first() ||
-            message.guild.roles.cache.find(r => r.name.toLowerCase() === query);
+        const arg = args.join(' ').trim();
+        const role = resolveRole(message, arg);
 
         if (!role) {
-            return message.reply('Role not found. Mention a role or provide its exact name.');
+            return message.reply('❌ Role not found. Try mentioning the role, or providing its name or ID.');
         }
 
         const embed = buildRoleInfoEmbed(role);
         return message.reply({ embeds: [embed] });
     }
 };
+
+function resolveRole(message, arg) {
+    if (!arg) return null;
+
+    const normalizedArg = arg.toLowerCase();
+    const roleId = arg.match(/^<@&(\d+)>$/)?.[1] || arg;
+
+    return message.mentions.roles.first() ||
+        message.guild.roles.cache.get(roleId) ||
+        message.guild.roles.cache.find(r => r.name.toLowerCase() === normalizedArg) ||
+        message.guild.roles.cache.find(r => r.name.toLowerCase().includes(normalizedArg)) ||
+        null;
+}
 
 function buildRoleInfoEmbed(role) {
     const onlineStatuses = new Set(['online', 'idle', 'dnd']);

@@ -1,6 +1,7 @@
 const { EmbedBuilder } = require('discord.js');
 const axios = require('axios');
 const { formatNumber } = require('../../utils/helpers');
+const { logError } = require('../../utils/errorLogger');
 
 module.exports = {
     name: 'crypto',
@@ -86,7 +87,7 @@ module.exports = {
             await loading.edit({ content: null, embeds: [embed] });
 
         } catch (error) {
-            console.error('CoinGecko error:', error.response?.data || error.message);
+            await logError(client, error, 'crypto — main');
             if (error.response?.status === 429) {
                 return loading.edit('❌ Rate limited by CoinGecko. Try again in a minute.');
             }

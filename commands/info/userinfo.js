@@ -13,6 +13,15 @@ module.exports = {
     cooldown: 5,
 
     async execute(message, args, client, guildData) {
+        const arg = args.join(' ').trim();
+        if (arg) {
+            const member = resolveMember(message, arg);
+            if (!member) {
+                return message.reply('❌ Member not found. Try mentioning them, or providing their username, nickname, or ID.');
+            }
+            args = [member.id];
+        }
+
         let target;
         let userId;
 
@@ -249,3 +258,18 @@ module.exports = {
         message.reply({ embeds: [embed] });
     }
 };
+
+function resolveMember(message, arg) {
+    if (!message.guild || !arg) return null;
+
+    const normalizedArg = arg.toLowerCase();
+    const userId = arg.match(/^<@!?(\d+)>$/)?.[1] || arg;
+
+    return message.mentions.members.first() ||
+        message.guild.members.cache.get(userId) ||
+        message.guild.members.cache.find(m => m.user.tag.toLowerCase() === normalizedArg) ||
+        message.guild.members.cache.find(m => m.displayName.toLowerCase() === normalizedArg) ||
+        message.guild.members.cache.find(m => m.displayName.toLowerCase().includes(normalizedArg)) ||
+        message.guild.members.cache.find(m => m.user.username.toLowerCase().includes(normalizedArg)) ||
+        null;
+}

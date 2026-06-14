@@ -4,6 +4,7 @@ const { Client, GatewayIntentBits, Collection, Partials, ActivityType } = requir
 const mongoose = require('mongoose');
 const fs = require('fs');
 const path = require('path');
+const { logCritical } = require('./utils/errorLogger');
 
 // Create client with necessary intents
 const client = new Client({
@@ -51,7 +52,10 @@ if (!client.config.mongodbUri) {
 // Connect to MongoDB
 async function connectDatabase() {
     try {
-        await mongoose.connect(client.config.mongodbUri);
+        await mongoose.connect(client.config.mongodbUri).catch(async error => {
+            await logCritical(client, error, 'MongoDB Connection');
+            throw error;
+        });
         console.log('✅ Connected to MongoDB successfully');
     } catch (error) {
         console.error('❌ Failed to connect to MongoDB:', error.message);
@@ -149,17 +153,25 @@ async function init() {
     loadEvents();
 
     // Login to Discord
-    await client.login(client.config.token);
+    try {
+        await client.login(client.config.token);
+        setTimeout(() => {
+            if (!client.isReady()) {
+                logCritical(client, new Error('Client did not become ready within 30 seconds'), 'Ready Timeout');
+            }
+        }, 30 * 1000);
+    } catch (error) {
+        await logCritical(client, error, 'Bot Login');
+        throw error;
+    }
 }
 
 // Handle unhandled errors
-process.on('unhandledRejection', error => {
-    console.error('Unhandled promise rejection:', error);
-});
+process.on('unhandledRejection', error => logCritical(client, error, 'unhandledRejection'));
 
-process.on('uncaughtException', error => {
-    console.error('Uncaught exception:', error);
-});
+process.on('uncaughtException', error => logCritical(client, error, 'uncaughtException'));
+
+client.on('error', error => logCritical(client, error, 'Discord Client'));
 
 // Start the bot
 init();

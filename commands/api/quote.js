@@ -1,5 +1,6 @@
 const { EmbedBuilder } = require('discord.js');
 const axios = require('axios');
+const { logError } = require('../../utils/errorLogger');
 
 module.exports = {
     name: 'quote',
@@ -30,7 +31,7 @@ module.exports = {
             await loading.edit({ content: null, embeds: [embed] });
 
         } catch (error) {
-            console.error('Quote API error:', error.message);
+            await logError(client, error, 'quote — main');
             loading.edit('❌ Failed to fetch a quote. Try again later.');
         }
     }

@@ -1,6 +1,7 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType } = require('discord.js');
 const { spotifyGet, formatTrackDuration } = require('../../utils/spotify');
 const { truncate } = require('../../utils/helpers');
+const { logError } = require('../../utils/errorLogger');
 
 const SPOTIFY_GREEN = '#1DB954';
 const hardcodedClientId = '';
@@ -57,7 +58,7 @@ module.exports = {
                 case 'new': return await newReleases(message, loading);
             }
         } catch (error) {
-            console.error('Spotify error:', error.response?.data || error.message);
+            await logError(client, error, `spotify — ${subcommand || 'main'}`);
             if (error.message.includes('not set')) return loading.edit(`❌ ${error.message}`);
             loading.edit('❌ Spotify API error. Check your credentials or try again later.');
         }

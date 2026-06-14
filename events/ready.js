@@ -1,6 +1,7 @@
 const { ActivityType, EmbedBuilder } = require('discord.js');
 const Reminder = require('../models/Reminder');
 const DisabledCommand = require('../models/DisabledCommand');
+const GuildDisabled = require('../models/GuildDisabled');
 const Whitelist = require('../models/Whitelist');
 const { startGiveawayPoller } = require('../utils/giveawayManager');
 const startActivityPing = require('../utils/activityPing');
@@ -20,6 +21,29 @@ module.exports = {
         } catch (error) {
             console.error('Failed to load disabled commands:', error);
             client.disabledCommands = new Set();
+        }
+
+        try {
+            client.guildDisabled = new Map();
+            const guildDisabledEntries = await GuildDisabled.find();
+
+            for (const entry of guildDisabledEntries) {
+                if (!client.guildDisabled.has(entry.guildId)) {
+                    client.guildDisabled.set(entry.guildId, { commands: new Set(), categories: new Set() });
+                }
+
+                const config = client.guildDisabled.get(entry.guildId);
+                if (entry.type === 'command') {
+                    config.commands.add(entry.name);
+                } else if (entry.type === 'category') {
+                    config.categories.add(entry.name);
+                }
+            }
+
+            console.log(`Loaded guild disabled config for ${client.guildDisabled.size} guild(s)`);
+        } catch (error) {
+            console.error('Failed to load guild disabled config:', error);
+            client.guildDisabled = new Map();
         }
 
         try {

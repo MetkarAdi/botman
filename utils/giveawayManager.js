@@ -1,5 +1,6 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const Giveaway = require('../models/Giveaway');
+const { logError } = require('./errorLogger');
 
 // ── Build the giveaway embed ──────────────────────────────────────────────────
 function buildEmbed(giveaway, guild) {
@@ -148,7 +149,9 @@ async function endGiveaway(giveaway, client, reroll = false) {
             embeds: [buildEmbed(giveaway, guild)],
             components: [buildRow(giveaway)]
         });
-    } catch {}
+    } catch (err) {
+        await logError(client, err, 'giveawayManager');
+    }
 
     // Announce winners
     if (winners.length > 0) {
@@ -177,7 +180,7 @@ function startGiveawayPoller(client) {
                 await endGiveaway(giveaway, client, false);
             }
         } catch (err) {
-            console.error('[Giveaway] Poller error:', err.message);
+            await logError(client, err, 'giveawayManager');
         }
     }, 15 * 1000);
 }
