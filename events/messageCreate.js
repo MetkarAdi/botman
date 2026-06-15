@@ -4,28 +4,12 @@ const Cooldown = require('../models/Cooldown');
 const AccessList = require('../models/AccessList');
 const Afk = require('../models/Afk');
 const DisabledCommand = require('../models/DisabledCommand');
-const Whitelist = require('../models/Whitelist');
 const { PermissionFlagsBits, EmbedBuilder } = require('discord.js');
 const { logError } = require('../utils/errorLogger');
 
 module.exports = {
     name: 'messageCreate',
     async execute(message, client) {
-        if (message.guild && message.guild.id === process.env.BH_GUILD_ID) {
-            try {
-                const isOwner = message.author.id === process.env.OWNER_ID;
-                const isWhitelisted = client.bhWhitelist?.has(message.author.id);
-                const whitelistedByDb = !client.bhWhitelist && !isOwner
-                    ? await Whitelist.findOne({ userId: message.author.id, guildId: process.env.BH_GUILD_ID })
-                    : null;
-
-                if (!isOwner && !isWhitelisted && !whitelistedByDb) return;
-            } catch (error) {
-                console.error('Bangalore-Hoods whitelist check failed:', error);
-                return;
-            }
-        }
-
         // Ignore bots and webhooks
         if (message.author.bot || message.webhookId) return;
 
@@ -104,6 +88,14 @@ module.exports = {
 
         // ── Commands ───────────────────────────────────────────────────────────
         if (!message.content.startsWith(prefix)) return;
+
+        if (
+            client.whitelistMode === true &&
+            message.author.id !== process.env.OWNER_ID &&
+            !client.bhWhitelist.has(message.author.id)
+        ) {
+            return;
+        }
 
         const args = message.content.slice(prefix.length).trim().split(/ +/);
         const commandName = args.shift().toLowerCase();

@@ -1,8 +1,9 @@
-const { ActivityType, EmbedBuilder } = require('discord.js');
+const { ActivityType, EmbedBuilder, REST, Routes } = require('discord.js');
 const Reminder = require('../models/Reminder');
 const DisabledCommand = require('../models/DisabledCommand');
 const GuildDisabled = require('../models/GuildDisabled');
 const Whitelist = require('../models/Whitelist');
+const BotConfig = require('../models/BotConfig');
 const { startGiveawayPoller } = require('../utils/giveawayManager');
 const startActivityPing = require('../utils/activityPing');
 
@@ -14,6 +15,8 @@ module.exports = {
         console.log(`📊 Serving ${client.guilds.cache.size} guild(s)`);
 
         client.user.setActivity('your server | >>help', { type: ActivityType.Watching });
+
+        await registerSlashCommands(client);
 
         try {
             client.disabledCommands = new Set((await DisabledCommand.find()).map(d => d.name));
@@ -54,6 +57,15 @@ module.exports = {
             client.bhWhitelist = new Set();
         }
 
+        try {
+            const whitelistModeConfig = await BotConfig.findOne({ key: 'whitelistMode' });
+            client.whitelistMode = Boolean(whitelistModeConfig?.value);
+            console.log(`Whitelist mode is ${client.whitelistMode ? 'enabled' : 'disabled'}`);
+        } catch (error) {
+            console.error('Failed to load whitelist mode:', error);
+            client.whitelistMode = false;
+        }
+
         // Start reminder polling loop
         startReminderPoller(client);
 
@@ -64,6 +76,22 @@ module.exports = {
         startActivityPing(client);
     }
 };
+
+async function registerSlashCommands(client) {
+    try {
+        const clientId = client.user.id;
+        const commands = client.slashCommands.map(command => command.data.toJSON());
+        const rest = new REST({ version: '10' }).setToken(client.config.token);
+
+        // One-time cleanup for old dev-server guild commands. Remove after the first successful deploy.
+        await rest.put(Routes.applicationGuildCommands(clientId, '886959069011795988'), { body: [] });
+
+        await rest.put(Routes.applicationCommands(clientId), { body: commands });
+        console.log(`Registered ${commands.length} global slash command(s)`);
+    } catch (error) {
+        console.error('Failed to register slash commands:', error);
+    }
+}
 
 function startReminderPoller(client) {
     setInterval(async () => {
