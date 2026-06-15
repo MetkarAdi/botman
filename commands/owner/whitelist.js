@@ -47,13 +47,17 @@ module.exports = {
         }
 
         if (subcommand === 'list') {
+            if (client.whitelistMode === false) {
+                return message.reply('❌ Whitelist mode is currently disabled. Enable it first with `>>whitelistmode`.');
+            }
+
             const entries = await Whitelist.find({ guildId: process.env.BH_GUILD_ID }).sort({ userId: 1 });
             const description = entries.length
                 ? entries.map(entry => `<@${entry.userId}>`).join('\n')
                 : 'No users are currently whitelisted.';
 
             const embed = new EmbedBuilder()
-                .setTitle('Bangalore-Hoods Whitelist')
+                .setTitle(`${message.guild.name} Whitelist`)
                 .setDescription(description)
                 .setColor('#00FF00')
                 .setFooter({ text: `${entries.length} user(s) whitelisted` })
