@@ -4,54 +4,62 @@ const Whitelist = require('../../models/Whitelist');
 module.exports = {
     name: 'whitelist',
     aliases: ['wl'],
-    description: 'Manage the Bangalore-Hoods bot whitelist',
+    description: 'Manage the bot whitelist for this server',
     usage: 'whitelist <add|remove|list> [@user]',
     category: 'owner',
     ownerOnly: true,
-    guildOnly: false,
+    guildOnly: true,
     cooldown: 5,
 
     async execute(message, args, client) {
-        if (message.author.id !== process.env.OWNER_ID) {
-            return message.reply('❌ Owner only.');
+        if (!message.guild) {
+            return message.reply('This command can only be used in a server.');
         }
 
+        if (message.author.id !== process.env.OWNER_ID) {
+            return message.reply('Owner only.');
+        }
+
+        const guildId = message.guild.id;
         const subcommand = args[0]?.toLowerCase();
 
         if (subcommand === 'add') {
             const target = await resolveUser(message, args[1], client);
-            if (!target) return message.reply('❌ Please mention a user or provide a valid user ID.');
+            if (!target) return message.reply('Please mention a user or provide a valid user ID.');
 
             await Whitelist.updateOne(
-                { userId: target.id },
-                { $set: { userId: target.id, guildId: process.env.BH_GUILD_ID } },
+                { userId: target.id, guildId },
+                { $set: { userId: target.id, guildId } },
                 { upsert: true }
             );
 
-            client.bhWhitelist ||= new Set();
-            client.bhWhitelist.add(target.id);
+            client.bhWhitelist ||= new Map();
+            if (!client.bhWhitelist.has(guildId)) {
+                client.bhWhitelist.set(guildId, new Set());
+            }
+            client.bhWhitelist.get(guildId).add(target.id);
 
-            return message.reply(`✅ ${target.tag} has been whitelisted for Bangalore-Hoods.`);
+            return message.reply(`${target.tag} has been whitelisted for this server.`);
         }
 
         if (subcommand === 'remove') {
             const target = await resolveUser(message, args[1], client);
-            if (!target) return message.reply('❌ Please mention a user or provide a valid user ID.');
+            if (!target) return message.reply('Please mention a user or provide a valid user ID.');
 
-            await Whitelist.deleteOne({ userId: target.id, guildId: process.env.BH_GUILD_ID });
+            await Whitelist.deleteOne({ userId: target.id, guildId });
 
-            client.bhWhitelist ||= new Set();
-            client.bhWhitelist.delete(target.id);
+            client.bhWhitelist ||= new Map();
+            client.bhWhitelist.get(guildId)?.delete(target.id);
 
-            return message.reply(`✅ ${target.tag} has been removed from the whitelist.`);
+            return message.reply(`${target.tag} has been removed from this server's whitelist.`);
         }
 
         if (subcommand === 'list') {
-            if (client.whitelistMode === false) {
-                return message.reply('❌ Whitelist mode is currently disabled. Enable it first with `>>whitelistmode`.');
+            if (client.whitelistMode?.get(guildId) !== true) {
+                return message.reply('Whitelist mode is currently disabled. Enable it first with `>>whitelistmode`.');
             }
 
-            const entries = await Whitelist.find({ guildId: process.env.BH_GUILD_ID }).sort({ userId: 1 });
+            const entries = await Whitelist.find({ guildId }).sort({ userId: 1 });
             const description = entries.length
                 ? entries.map(entry => `<@${entry.userId}>`).join('\n')
                 : 'No users are currently whitelisted.';

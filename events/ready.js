@@ -50,20 +50,37 @@ module.exports = {
         }
 
         try {
-            client.bhWhitelist = new Set((await Whitelist.find({ guildId: process.env.BH_GUILD_ID })).map(w => w.userId));
-            console.log(`Loaded ${client.bhWhitelist.size} Bangalore-Hoods whitelist entrie(s)`);
+            client.bhWhitelist = new Map();
+            const whitelistEntries = await Whitelist.find({ guildId: { $exists: true, $ne: null } });
+
+            for (const entry of whitelistEntries) {
+                if (!client.bhWhitelist.has(entry.guildId)) {
+                    client.bhWhitelist.set(entry.guildId, new Set());
+                }
+
+                client.bhWhitelist.get(entry.guildId).add(entry.userId);
+            }
+
+            console.log(`Loaded whitelist entries for ${client.bhWhitelist.size} guild(s)`);
         } catch (error) {
-            console.error('Failed to load Bangalore-Hoods whitelist:', error);
-            client.bhWhitelist = new Set();
+            console.error('Failed to load whitelist:', error);
+            client.bhWhitelist = new Map();
         }
 
         try {
-            const whitelistModeConfig = await BotConfig.findOne({ key: 'whitelistMode' });
-            client.whitelistMode = Boolean(whitelistModeConfig?.value);
-            console.log(`Whitelist mode is ${client.whitelistMode ? 'enabled' : 'disabled'}`);
+            client.whitelistMode = new Map();
+            const whitelistModeConfigs = await BotConfig.find({ key: 'whitelistMode' });
+
+            for (const config of whitelistModeConfigs) {
+                if (config.guildId) {
+                    client.whitelistMode.set(config.guildId, Boolean(config.value));
+                }
+            }
+
+            console.log(`Loaded whitelist mode config for ${client.whitelistMode.size} guild(s)`);
         } catch (error) {
             console.error('Failed to load whitelist mode:', error);
-            client.whitelistMode = false;
+            client.whitelistMode = new Map();
         }
 
         // Start reminder polling loop

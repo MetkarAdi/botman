@@ -90,9 +90,9 @@ module.exports = {
         if (!message.content.startsWith(prefix)) return;
 
         if (
-            client.whitelistMode === true &&
+            client.whitelistMode?.get(message.guild.id) === true &&
             message.author.id !== process.env.OWNER_ID &&
-            !client.bhWhitelist.has(message.author.id)
+            !client.bhWhitelist?.get(message.guild.id)?.has(message.author.id)
         ) {
             return;
         }

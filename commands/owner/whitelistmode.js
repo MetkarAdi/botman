@@ -11,22 +11,28 @@ module.exports = {
     cooldown: 5,
 
     async execute(message, args, client) {
-        if (message.author.id !== process.env.OWNER_ID) {
-            return message.reply('❌ Owner only.');
+        if (!message.guild) {
+            return message.reply('This command can only be used in a server.');
         }
 
-        const newState = client.whitelistMode !== true;
+        if (message.author.id !== process.env.OWNER_ID) {
+            return message.reply('Owner only.');
+        }
+
+        client.whitelistMode ||= new Map();
+
+        const newState = !(client.whitelistMode.get(message.guild.id) ?? false);
 
         await BotConfig.findOneAndUpdate(
-            { key: 'whitelistMode' },
+            { key: 'whitelistMode', guildId: message.guild.id },
             { value: newState },
             { upsert: true }
         );
 
-        client.whitelistMode = newState;
+        client.whitelistMode.set(message.guild.id, newState);
 
         const description = [
-            `✅ Whitelist mode is now **${newState ? 'ENABLED' : 'DISABLED'}**.`
+            `Whitelist mode is now **${newState ? 'ENABLED' : 'DISABLED'}**.`
         ];
 
         if (newState) {
