@@ -68,6 +68,8 @@ module.exports = {
             client.bhWhitelist = new Map();
         }
 
+        await BotConfig.collection.dropIndex('key_1').catch(() => {});
+
         try {
             client.whitelistMode = new Map();
             const whitelistModeConfigs = await BotConfig.find({ key: 'whitelistMode' });

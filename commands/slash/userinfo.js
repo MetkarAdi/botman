@@ -2,24 +2,26 @@ const { SlashCommandBuilder } = require('discord.js');
 const cmd = require('../info/userinfo');
 module.exports = {
     data: new SlashCommandBuilder().setName('userinfo').setDescription(cmd.description)
-        .addStringOption(o => o.setName('user').setDescription('User mention, username, nickname, or ID')),
+        .addUserOption(o => o.setName('user').setDescription('The user to look up').setRequired(false)),
     category: 'info',
     async execute(interaction, client, guildData) {
         await interaction.deferReply();
-        const query = interaction.options.getString('user')?.trim();
-        const mentionId = query?.match(/^<@!?(\d+)>$/)?.[1];
-        const mentionedMember = mentionId ? interaction.guild?.members.cache.get(mentionId) : null;
+        const user = interaction.options.getUser('user');
+        const targetMember = user
+            ? await interaction.guild.members.fetch(user.id).catch(() => null)
+            : interaction.member;
+
         const m = {
             reply: o => interaction.editReply(o),
             author: interaction.user,
             guild: interaction.guild,
-            member: interaction.member,
+            member: targetMember,
             mentions: {
-                members: { first: () => mentionedMember || null },
-                users: { first: () => mentionedMember?.user || null }
+                members: { first: () => targetMember || null },
+                users: { first: () => user || targetMember?.user || null }
             }
         };
 
-        await cmd.execute(m, query ? [query] : [], client, guildData);
+        await cmd.execute(m, user ? [user.id] : [], client, guildData);
     }
 };
