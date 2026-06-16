@@ -7,8 +7,9 @@ const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_CHARGES = 5;
 const RESET_HOURS_UTC = [0, 4, 8, 12, 16, 20];
 const LEAGUE_IDS = [39, 140, 135, 78, 61];
-const SEASON = 2024;
-const MAX_PLAYER_ATTEMPTS = 5;
+const SEASONS = [2024, 2023];
+const MAX_LEAGUE_ATTEMPTS = 3;
+const MAX_RANDOM_PAGE = 10;
 
 function getCurrentWindowStart() {
     const now = new Date();
@@ -105,28 +106,72 @@ async function drawCard(userId) {
 }
 
 async function fetchRandomRatedPlayer() {
-    const leagueId = randomItem(LEAGUE_IDS);
-    const page = randomInt(1, 5);
-    const data = await apiGet('/players', {
-        league: leagueId,
-        season: SEASON,
-        page
-    });
-    const players = Array.isArray(data.response) ? data.response : [];
+    const leagues = shuffle(LEAGUE_IDS).slice(0, MAX_LEAGUE_ATTEMPTS);
 
-    const candidates = [...players];
+    for (const leagueId of leagues) {
+        const currentSeasonResult = await fetchRandomLeaguePage(leagueId, SEASONS[0]);
 
-    for (let attempt = 0; attempt < MAX_PLAYER_ATTEMPTS && candidates.length; attempt += 1) {
-        const index = randomInt(0, candidates.length - 1);
-        const [entry] = candidates.splice(index, 1);
-        const rating = parseRating(entry.statistics?.[0]?.games?.rating);
+        if (currentSeasonResult.validPlayers.length) {
+            return randomItem(currentSeasonResult.validPlayers);
+        }
 
-        if (rating !== null) {
-            return entry;
+        if (!shouldTryFallbackSeason(currentSeasonResult.players)) {
+            continue;
+        }
+
+        const fallbackSeasonResult = await fetchRandomLeaguePage(leagueId, SEASONS[1]);
+
+        if (fallbackSeasonResult.validPlayers.length) {
+            return randomItem(fallbackSeasonResult.validPlayers);
         }
     }
 
     throw new Error('NO_PLAYER');
+}
+
+async function fetchRandomLeaguePage(leagueId, season) {
+    const firstPageData = await apiGet('/players', {
+        league: leagueId,
+        season,
+        page: 1
+    });
+    const totalPages = getTotalPages(firstPageData);
+    const page = randomInt(1, totalPages);
+    const data = page === 1
+        ? firstPageData
+        : await apiGet('/players', {
+            league: leagueId,
+            season,
+            page
+        });
+    const players = Array.isArray(data.response) ? data.response : [];
+    const validPlayers = players.filter(isValidPlayerEntry);
+
+    console.log(`[FCDraw] League: ${leagueId} | Page: ${page} | Players: ${players.length} | Valid: ${validPlayers.length}`);
+
+    return { players, validPlayers };
+}
+
+function getTotalPages(data) {
+    const total = Number(data?.paging?.total);
+
+    if (!Number.isFinite(total) || total < 1) {
+        return 1;
+    }
+
+    return Math.min(Math.floor(total), MAX_RANDOM_PAGE);
+}
+
+function isValidPlayerEntry(entry) {
+    const games = entry.statistics?.[0]?.games;
+    const rating = parseRating(games?.rating);
+    const appearances = Number(games?.appearances ?? games?.appearences);
+
+    return rating !== null && Number.isFinite(appearances) && appearances > 0;
+}
+
+function shouldTryFallbackSeason(players) {
+    return !players.length || players.every((entry) => parseRating(entry.statistics?.[0]?.games?.rating) === null);
 }
 
 async function getCachedPlayer(playerId) {
@@ -261,6 +306,17 @@ function randomItem(items) {
 
 function randomInt(min, max) {
     return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function shuffle(items) {
+    const copy = [...items];
+
+    for (let index = copy.length - 1; index > 0; index -= 1) {
+        const swapIndex = randomInt(0, index);
+        [copy[index], copy[swapIndex]] = [copy[swapIndex], copy[index]];
+    }
+
+    return copy;
 }
 
 function clamp(value, min, max) {
