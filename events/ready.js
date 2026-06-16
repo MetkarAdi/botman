@@ -101,14 +101,6 @@ module.exports = {
 
         // Keep-alive activity ping
         startActivityPing(client);
-
-        setInterval(async () => {
-            try {
-                await buildPlayerPool(client);
-            } catch (error) {
-                await logError(client, error, 'ready - buildPlayerPool refresh');
-            }
-        }, 24 * 60 * 60 * 1000);
     }
 };
 

@@ -1,18 +1,12 @@
+const fs = require('fs');
+const path = require('path');
 const FootballCard = require('../models/FootballCard');
 const FCCooldown = require('../models/FCCooldown');
-const FCPlayerCache = require('../models/FCPlayerCache');
-const { logError } = require('./errorLogger');
+const { logCritical } = require('./errorLogger');
 
-const API_BASE_URL = 'https://v3.football.api-sports.io';
 const MAX_CHARGES = 5;
 const RESET_HOURS_UTC = [0, 4, 8, 12, 16, 20];
-const PLAYER_POOL_LEAGUE_IDS = [39, 140, 135, 78, 61];
-const PLAYER_POOL_SEASON = 2023;
-const PLAYER_POOL_ENDPOINTS = [
-    '/players/topratings',
-    '/players/topscorers',
-    '/players/topassists'
-];
+const PLAYER_POOL_PATH = path.join(__dirname, '..', 'data', 'playerPool.json');
 
 function getCurrentWindowStart() {
     const now = new Date();
@@ -87,21 +81,22 @@ async function drawCard(userId, client) {
     }
 
     if (!Array.isArray(client.fcPlayerPool) || client.fcPlayerPool.length === 0) {
-        await buildPlayerPool(client);
-    }
-
-    if (!Array.isArray(client.fcPlayerPool) || client.fcPlayerPool.length === 0) {
-        throw new Error('PLAYER_POOL_EMPTY');
+        await logCritical(
+            client,
+            new Error('fcPlayerPool is empty — run node scripts/buildPool.js'),
+            'fcDraw - player pool'
+        );
+        throw new Error('NO_PLAYER');
     }
 
     const entry = randomItem(client.fcPlayerPool);
-    const playerId = entry.player?.id;
+    const playerId = entry.playerId ?? entry.player?.id;
 
     if (!playerId) {
         throw new Error('PLAYER_POOL_INVALID');
     }
 
-    const playerData = normalizePlayer(entry);
+    const playerData = entry.playerId ? normalizePooledPlayer(entry) : normalizePlayer(entry);
     const cardId = generateCardId();
     const card = new FootballCard({
         userId,
@@ -116,30 +111,9 @@ async function drawCard(userId, client) {
 }
 
 async function buildPlayerPool(client) {
-    const entriesByPlayerId = new Map();
-
-    for (const leagueId of PLAYER_POOL_LEAGUE_IDS) {
-        for (const endpoint of PLAYER_POOL_ENDPOINTS) {
-            const data = await apiGet(endpoint, {
-                season: PLAYER_POOL_SEASON,
-                league: leagueId
-            }, client);
-            const players = Array.isArray(data.response) ? data.response : [];
-
-            for (const entry of players) {
-                const playerId = entry.player?.id;
-
-                if (!playerId || entriesByPlayerId.has(playerId) || !isRatedPlayerEntry(entry)) {
-                    continue;
-                }
-
-                entriesByPlayerId.set(playerId, entry);
-            }
-        }
-    }
-
-    const pool = Array.from(entriesByPlayerId.values());
-    await savePlayerPool(pool);
+    const file = fs.readFileSync(PLAYER_POOL_PATH, 'utf8');
+    const players = JSON.parse(file);
+    const pool = Array.isArray(players) ? players.filter(isRatedPlayerEntry) : [];
 
     client.fcPlayerPool = pool;
     console.log(`[FCDraw] Player pool built: ${pool.length} valid players`);
@@ -147,34 +121,38 @@ async function buildPlayerPool(client) {
     return pool;
 }
 
-async function savePlayerPool(pool) {
-    if (!pool.length) {
-        return;
+function isRatedPlayerEntry(entry) {
+    if (entry.playerId) {
+        return parseRating(entry.rating) !== null;
     }
 
-    await FCPlayerCache.bulkWrite(
-        pool.map((entry) => {
-            const playerData = normalizePlayer(entry);
-
-            return {
-                updateOne: {
-                    filter: { playerId: playerData.playerId },
-                    update: {
-                        $set: {
-                            ...playerData,
-                            cachedAt: new Date()
-                        }
-                    },
-                    upsert: true
-                }
-            };
-        }),
-        { ordered: false }
-    );
+    return parseRating(entry.statistics?.[0]?.games?.rating) !== null;
 }
 
-function isRatedPlayerEntry(entry) {
-    return parseRating(entry.statistics?.[0]?.games?.rating) !== null;
+function normalizePooledPlayer(entry) {
+    const rating = parseRating(entry.rating);
+
+    return {
+        playerId: entry.playerId,
+        playerName: entry.playerName,
+        playerPhoto: entry.playerPhoto,
+        club: entry.club,
+        clubLogo: entry.clubLogo,
+        league: entry.league,
+        position: entry.position,
+        rating,
+        rarity: getRarity(rating),
+        stats: {
+            goals: numberOrZero(entry.stats?.goals),
+            assists: numberOrZero(entry.stats?.assists),
+            appearances: numberOrZero(entry.stats?.appearances),
+            passAccuracy: numberOrZero(entry.stats?.passAccuracy),
+            dribbles: numberOrZero(entry.stats?.dribbles),
+            keyPasses: numberOrZero(entry.stats?.keyPasses),
+            yellowCards: numberOrZero(entry.stats?.yellowCards),
+            redCards: numberOrZero(entry.stats?.redCards)
+        }
+    };
 }
 
 function normalizePlayer(entry) {
@@ -203,56 +181,6 @@ function normalizePlayer(entry) {
             redCards: numberOrZero(statistics.cards?.red)
         }
     };
-}
-
-async function apiGet(path, params, client) {
-    const apiKey = getApiKey();
-    const { default: fetch } = await import('node-fetch');
-    const response = await fetch(buildUrl(path, params), {
-        headers: { 'x-apisports-key': apiKey }
-    });
-
-    if (response.status !== 200) {
-        await safeLogError(
-            client,
-            new Error(`FCDraw: API response status ${response.status} for league ${params.league} season ${params.season}`),
-            'fcDraw - api status'
-        );
-    }
-
-    if (!response.ok) {
-        throw new Error(`Football API request failed with status ${response.status}`);
-    }
-
-    return response.json();
-}
-
-async function safeLogError(client, error, context) {
-    try {
-        await logError(client, error, context);
-    } catch (loggerError) {
-        console.error('[FCDraw] Failed to log diagnostic:', loggerError);
-    }
-}
-
-function getApiKey() {
-    const apiKey = process.env.FOOTBALL_API_KEY?.replace(/[\r\n]/g, '').trim();
-
-    if (!apiKey) {
-        throw new Error('FOOTBALL_API_KEY is not set');
-    }
-
-    return apiKey;
-}
-
-function buildUrl(path, params) {
-    const url = new URL(`${API_BASE_URL}${path}`);
-
-    Object.entries(params)
-        .filter(([, value]) => value !== null && value !== undefined && value !== '')
-        .forEach(([key, value]) => url.searchParams.set(key, String(value)));
-
-    return url.toString();
 }
 
 function generateCardId() {

@@ -52,6 +52,10 @@ module.exports = {
                 return message.reply({ embeds: [buildCooldownEmbed(error.message)] });
             }
 
+            if (error.message === 'NO_PLAYER') {
+                return message.reply('Could not find a valid player. Ask the owner to run `node scripts/buildPool.js`.');
+            }
+
             await logError(client, error, 'fcdraw');
             return message.reply('Something went wrong.');
         }
