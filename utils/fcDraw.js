@@ -7,10 +7,11 @@ const API_BASE_URL = 'https://v3.football.api-sports.io';
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_CHARGES = 5;
 const RESET_HOURS_UTC = [0, 4, 8, 12, 16, 20];
-const LEAGUE_IDS = [39, 140, 135, 78, 61];
-const SEASONS = [2024, 2023];
+const LEAGUE_IDS = [39, 135, 78, 61, 2, 3, 140];
+const SEASONS = [2023, 2024];
 const MAX_LEAGUE_ATTEMPTS = 3;
-const MAX_RANDOM_PAGE = 10;
+const MAX_PAGE_ATTEMPTS_PER_LEAGUE = 3;
+const pagingCache = new Map();
 
 function getCurrentWindowStart() {
     const now = new Date();
@@ -110,19 +111,19 @@ async function fetchRandomRatedPlayer(client) {
     const leagues = shuffle(LEAGUE_IDS).slice(0, MAX_LEAGUE_ATTEMPTS);
 
     for (const leagueId of leagues) {
-        const currentSeasonResult = await fetchRandomLeaguePage(leagueId, SEASONS[0], client);
+        const primarySeasonResult = await fetchLeagueAttempt(leagueId, SEASONS[0], client);
 
-        if (currentSeasonResult.validPlayers.length) {
-            return randomItem(currentSeasonResult.validPlayers);
+        if (primarySeasonResult.validPlayers.length) {
+            return randomItem(primarySeasonResult.validPlayers);
         }
 
-        await logFailedLeagueAttempt(client, leagueId, currentSeasonResult);
+        await logFailedLeagueAttempt(client, leagueId, primarySeasonResult);
 
-        if (!shouldTryFallbackSeason(currentSeasonResult.players)) {
+        if (!shouldTryFallbackSeason(primarySeasonResult.players)) {
             continue;
         }
 
-        const fallbackSeasonResult = await fetchRandomLeaguePage(leagueId, SEASONS[1], client);
+        const fallbackSeasonResult = await fetchLeagueAttempt(leagueId, SEASONS[1], client);
 
         if (fallbackSeasonResult.validPlayers.length) {
             return randomItem(fallbackSeasonResult.validPlayers);
@@ -134,40 +135,75 @@ async function fetchRandomRatedPlayer(client) {
     await safeLogError(
         client,
         new Error('FCDraw: All 3 league retries returned no valid players'),
-        'fcDraw — NO_PLAYER'
+        'fcDraw - NO_PLAYER'
     );
 
     throw new Error('NO_PLAYER');
 }
 
-async function fetchRandomLeaguePage(leagueId, season, client) {
-    const firstPageData = await apiGet('/players', {
+async function fetchLeagueAttempt(leagueId, season, client) {
+    const paging = await getPagingInfo(leagueId, season, client);
+    const pages = shuffle(range(1, paging.totalPages)).slice(0, MAX_PAGE_ATTEMPTS_PER_LEAGUE);
+    const allPlayers = [];
+    const allValidPlayers = [];
+    const attemptedPages = [];
+
+    for (const page of pages) {
+        const data = page === 1 ? paging.firstPageData : await fetchPlayersPage(leagueId, season, page, client);
+        const players = Array.isArray(data.response) ? data.response : [];
+        const validPlayers = players.filter(isValidPlayerEntry);
+
+        allPlayers.push(...players);
+        allValidPlayers.push(...validPlayers);
+        attemptedPages.push(page);
+
+        console.log(`[FCDraw] Season: ${season} | League: ${leagueId} | Page: ${page} | Players: ${players.length} | Valid: ${validPlayers.length}`);
+
+        if (validPlayers.length) {
+            break;
+        }
+    }
+
+    return {
+        season,
+        pages: attemptedPages,
+        players: allPlayers,
+        validPlayers: allValidPlayers
+    };
+}
+
+async function getPagingInfo(leagueId, season, client) {
+    const cacheKey = `${leagueId}-${season}`;
+    const cached = pagingCache.get(cacheKey);
+
+    if (cached) {
+        return cached;
+    }
+
+    const firstPageData = await fetchPlayersPage(leagueId, season, 1, client);
+    const pagingInfo = {
+        totalPages: getTotalPages(firstPageData),
+        firstPageData
+    };
+
+    pagingCache.set(cacheKey, pagingInfo);
+
+    return pagingInfo;
+}
+
+async function fetchPlayersPage(leagueId, season, page, client) {
+    return apiGet('/players', {
         league: leagueId,
         season,
-        page: 1
+        page
     }, client);
-    const totalPages = getTotalPages(firstPageData);
-    const page = randomInt(1, totalPages);
-    const data = page === 1
-        ? firstPageData
-        : await apiGet('/players', {
-            league: leagueId,
-            season,
-            page
-        }, client);
-    const players = Array.isArray(data.response) ? data.response : [];
-    const validPlayers = players.filter(isValidPlayerEntry);
-
-    console.log(`[FCDraw] League: ${leagueId} | Page: ${page} | Players: ${players.length} | Valid: ${validPlayers.length}`);
-
-    return { page, players, validPlayers };
 }
 
 async function logFailedLeagueAttempt(client, leagueId, result) {
     await safeLogError(
         client,
-        new Error(`FCDraw: League ${leagueId} page ${result.page} returned ${result.players.length} players, ${result.validPlayers.length} valid`),
-        'fcDraw — player fetch'
+        new Error(`FCDraw: League ${leagueId} season ${result.season} pages ${result.pages.join(', ')} returned ${result.players.length} players, ${result.validPlayers.length} valid`),
+        'fcDraw - player fetch'
     );
 }
 
@@ -178,7 +214,7 @@ function getTotalPages(data) {
         return 1;
     }
 
-    return Math.min(Math.floor(total), MAX_RANDOM_PAGE);
+    return Math.floor(total);
 }
 
 function isValidPlayerEntry(entry) {
@@ -186,11 +222,11 @@ function isValidPlayerEntry(entry) {
     const rating = parseRating(games?.rating);
     const appearances = Number(games?.appearances ?? games?.appearences);
 
-    return rating !== null && Number.isFinite(appearances) && appearances > 0;
+    return rating !== null && Number.isFinite(appearances) && appearances >= 5;
 }
 
 function shouldTryFallbackSeason(players) {
-    return !players.length || players.every((entry) => parseRating(entry.statistics?.[0]?.games?.rating) === null);
+    return !players.length;
 }
 
 async function getCachedPlayer(playerId) {
@@ -274,7 +310,7 @@ async function apiGet(path, params, client) {
         await safeLogError(
             client,
             new Error(`FCDraw: API response status ${response.status} for league ${params.league} season ${params.season}`),
-            'fcDraw — api status'
+            'fcDraw - api status'
         );
     }
 
@@ -341,6 +377,10 @@ function randomItem(items) {
 
 function randomInt(min, max) {
     return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function range(min, max) {
+    return Array.from({ length: max - min + 1 }, (_, index) => min + index);
 }
 
 function shuffle(items) {
