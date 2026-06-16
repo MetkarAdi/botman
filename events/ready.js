@@ -6,6 +6,7 @@ const Whitelist = require('../models/Whitelist');
 const BotConfig = require('../models/BotConfig');
 const { startGiveawayPoller } = require('../utils/giveawayManager');
 const startActivityPing = require('../utils/activityPing');
+const { logError } = require('../utils/errorLogger');
 
 module.exports = {
     name: 'clientReady',
@@ -102,11 +103,12 @@ async function registerSlashCommands(client) {
 
         // One-time cleanup for old dev-server guild commands. Remove after the first successful deploy.
         await rest.put(Routes.applicationGuildCommands(clientId, '886959069011795988'), { body: [] });
+        console.log('[Deploy] Cleared guild commands from Bangalore-Hoods.');
 
         await rest.put(Routes.applicationCommands(clientId), { body: commands });
-        console.log(`Registered ${commands.length} global slash command(s)`);
+        console.log('[Deploy] Global slash commands registered.');
     } catch (error) {
-        console.error('Failed to register slash commands:', error);
+        await logError(client, error, 'ready - registerSlashCommands');
     }
 }
 
