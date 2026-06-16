@@ -1,6 +1,7 @@
 const FootballCard = require('../models/FootballCard');
 const FCCooldown = require('../models/FCCooldown');
 const FCPlayerCache = require('../models/FCPlayerCache');
+const { logError } = require('./errorLogger');
 
 const API_BASE_URL = 'https://v3.football.api-sports.io';
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
@@ -61,7 +62,7 @@ function getAvailableCharges(doc) {
     return clamp(MAX_CHARGES - (doc.chargesUsed || 0), 0, MAX_CHARGES);
 }
 
-async function drawCard(userId) {
+async function drawCard(userId, client) {
     let cooldown = await FCCooldown.findOne({ userId });
     const currentWindowStart = getCurrentWindowStart();
 
@@ -83,7 +84,7 @@ async function drawCard(userId) {
         throw new Error(`COOLDOWN:${getNextReset().getTime()}`);
     }
 
-    const entry = await fetchRandomRatedPlayer();
+    const entry = await fetchRandomRatedPlayer(client);
     const playerId = entry.player?.id;
 
     if (!playerId) {
@@ -105,36 +106,46 @@ async function drawCard(userId) {
     return card.save();
 }
 
-async function fetchRandomRatedPlayer() {
+async function fetchRandomRatedPlayer(client) {
     const leagues = shuffle(LEAGUE_IDS).slice(0, MAX_LEAGUE_ATTEMPTS);
 
     for (const leagueId of leagues) {
-        const currentSeasonResult = await fetchRandomLeaguePage(leagueId, SEASONS[0]);
+        const currentSeasonResult = await fetchRandomLeaguePage(leagueId, SEASONS[0], client);
 
         if (currentSeasonResult.validPlayers.length) {
             return randomItem(currentSeasonResult.validPlayers);
         }
 
+        await logFailedLeagueAttempt(client, leagueId, currentSeasonResult);
+
         if (!shouldTryFallbackSeason(currentSeasonResult.players)) {
             continue;
         }
 
-        const fallbackSeasonResult = await fetchRandomLeaguePage(leagueId, SEASONS[1]);
+        const fallbackSeasonResult = await fetchRandomLeaguePage(leagueId, SEASONS[1], client);
 
         if (fallbackSeasonResult.validPlayers.length) {
             return randomItem(fallbackSeasonResult.validPlayers);
         }
+
+        await logFailedLeagueAttempt(client, leagueId, fallbackSeasonResult);
     }
+
+    await safeLogError(
+        client,
+        new Error('FCDraw: All 3 league retries returned no valid players'),
+        'fcDraw — NO_PLAYER'
+    );
 
     throw new Error('NO_PLAYER');
 }
 
-async function fetchRandomLeaguePage(leagueId, season) {
+async function fetchRandomLeaguePage(leagueId, season, client) {
     const firstPageData = await apiGet('/players', {
         league: leagueId,
         season,
         page: 1
-    });
+    }, client);
     const totalPages = getTotalPages(firstPageData);
     const page = randomInt(1, totalPages);
     const data = page === 1
@@ -143,13 +154,21 @@ async function fetchRandomLeaguePage(leagueId, season) {
             league: leagueId,
             season,
             page
-        });
+        }, client);
     const players = Array.isArray(data.response) ? data.response : [];
     const validPlayers = players.filter(isValidPlayerEntry);
 
     console.log(`[FCDraw] League: ${leagueId} | Page: ${page} | Players: ${players.length} | Valid: ${validPlayers.length}`);
 
-    return { players, validPlayers };
+    return { page, players, validPlayers };
+}
+
+async function logFailedLeagueAttempt(client, leagueId, result) {
+    await safeLogError(
+        client,
+        new Error(`FCDraw: League ${leagueId} page ${result.page} returned ${result.players.length} players, ${result.validPlayers.length} valid`),
+        'fcDraw — player fetch'
+    );
 }
 
 function getTotalPages(data) {
@@ -244,18 +263,34 @@ function normalizePlayer(entry) {
     };
 }
 
-async function apiGet(path, params) {
+async function apiGet(path, params, client) {
     const apiKey = getApiKey();
     const { default: fetch } = await import('node-fetch');
     const response = await fetch(buildUrl(path, params), {
         headers: { 'x-apisports-key': apiKey }
     });
 
+    if (response.status !== 200) {
+        await safeLogError(
+            client,
+            new Error(`FCDraw: API response status ${response.status} for league ${params.league} season ${params.season}`),
+            'fcDraw — api status'
+        );
+    }
+
     if (!response.ok) {
         throw new Error(`Football API request failed with status ${response.status}`);
     }
 
     return response.json();
+}
+
+async function safeLogError(client, error, context) {
+    try {
+        await logError(client, error, context);
+    } catch (loggerError) {
+        console.error('[FCDraw] Failed to log diagnostic:', loggerError);
+    }
 }
 
 function getApiKey() {

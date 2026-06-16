@@ -42,7 +42,7 @@ module.exports = {
                 return message.reply({ embeds: [buildCooldownEmbed()] });
             }
 
-            const card = await drawCard(message.author.id);
+            const card = await drawCard(message.author.id, client);
             const image = await generateCard(card);
             const attachment = new AttachmentBuilder(image, { name: `${card.cardId}.png` });
             const rarity = card.rarity || 'Basic';
