@@ -101,10 +101,6 @@ async function registerSlashCommands(client) {
         const commands = client.slashCommands.map(command => command.data.toJSON());
         const rest = new REST({ version: '10' }).setToken(client.config.token);
 
-        // One-time cleanup for old dev-server guild commands. Remove after the first successful deploy.
-        await rest.put(Routes.applicationGuildCommands(clientId, '886959069011795988'), { body: [] });
-        console.log('[Deploy] Cleared guild commands from Bangalore-Hoods.');
-
         await rest.put(Routes.applicationCommands(clientId), { body: commands });
         console.log('[Deploy] Global slash commands registered.');
     } catch (error) {
