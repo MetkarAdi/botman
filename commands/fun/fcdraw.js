@@ -71,10 +71,6 @@ module.exports = {
                 return message.reply({ embeds: [buildCooldownEmbed(error.message)] });
             }
 
-            if (error.message === 'NO_PLAYER') {
-                return message.reply('❌ Couldn\'t find a valid player, try again.');
-            }
-
             await logError(client, error, 'fcdraw');
             return message.reply('❌ Something went wrong.');
         }

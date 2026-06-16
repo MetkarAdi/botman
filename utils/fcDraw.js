@@ -4,14 +4,15 @@ const FCPlayerCache = require('../models/FCPlayerCache');
 const { logError } = require('./errorLogger');
 
 const API_BASE_URL = 'https://v3.football.api-sports.io';
-const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_CHARGES = 5;
 const RESET_HOURS_UTC = [0, 4, 8, 12, 16, 20];
-const LEAGUE_IDS = [39, 135, 78, 61, 2, 3, 140];
-const SEASONS = [2023, 2024];
-const MAX_LEAGUE_ATTEMPTS = 3;
-const MAX_PAGE_ATTEMPTS_PER_LEAGUE = 3;
-const pagingCache = new Map();
+const PLAYER_POOL_LEAGUE_IDS = [39, 140, 135, 78, 61];
+const PLAYER_POOL_SEASON = 2023;
+const PLAYER_POOL_ENDPOINTS = [
+    '/players/topratings',
+    '/players/topscorers',
+    '/players/topassists'
+];
 
 function getCurrentWindowStart() {
     const now = new Date();
@@ -85,15 +86,22 @@ async function drawCard(userId, client) {
         throw new Error(`COOLDOWN:${getNextReset().getTime()}`);
     }
 
-    const entry = await fetchRandomRatedPlayer(client);
+    if (!Array.isArray(client.fcPlayerPool) || client.fcPlayerPool.length === 0) {
+        await buildPlayerPool(client);
+    }
+
+    if (!Array.isArray(client.fcPlayerPool) || client.fcPlayerPool.length === 0) {
+        throw new Error('PLAYER_POOL_EMPTY');
+    }
+
+    const entry = randomItem(client.fcPlayerPool);
     const playerId = entry.player?.id;
 
     if (!playerId) {
-        throw new Error('NO_PLAYER');
+        throw new Error('PLAYER_POOL_INVALID');
     }
 
-    const cachedPlayer = await getCachedPlayer(playerId);
-    const playerData = cachedPlayer || await cachePlayer(entry);
+    const playerData = normalizePlayer(entry);
     const cardId = generateCardId();
     const card = new FootballCard({
         userId,
@@ -107,168 +115,66 @@ async function drawCard(userId, client) {
     return card.save();
 }
 
-async function fetchRandomRatedPlayer(client) {
-    const leagues = shuffle(LEAGUE_IDS).slice(0, MAX_LEAGUE_ATTEMPTS);
+async function buildPlayerPool(client) {
+    const entriesByPlayerId = new Map();
 
-    for (const leagueId of leagues) {
-        const primarySeasonResult = await fetchLeagueAttempt(leagueId, SEASONS[0], client);
+    for (const leagueId of PLAYER_POOL_LEAGUE_IDS) {
+        for (const endpoint of PLAYER_POOL_ENDPOINTS) {
+            const data = await apiGet(endpoint, {
+                season: PLAYER_POOL_SEASON,
+                league: leagueId
+            }, client);
+            const players = Array.isArray(data.response) ? data.response : [];
 
-        if (primarySeasonResult.validPlayers.length) {
-            return randomItem(primarySeasonResult.validPlayers);
-        }
+            for (const entry of players) {
+                const playerId = entry.player?.id;
 
-        await logFailedLeagueAttempt(client, leagueId, primarySeasonResult);
+                if (!playerId || entriesByPlayerId.has(playerId) || !isRatedPlayerEntry(entry)) {
+                    continue;
+                }
 
-        if (!shouldTryFallbackSeason(primarySeasonResult.players)) {
-            continue;
-        }
-
-        const fallbackSeasonResult = await fetchLeagueAttempt(leagueId, SEASONS[1], client);
-
-        if (fallbackSeasonResult.validPlayers.length) {
-            return randomItem(fallbackSeasonResult.validPlayers);
-        }
-
-        await logFailedLeagueAttempt(client, leagueId, fallbackSeasonResult);
-    }
-
-    await safeLogError(
-        client,
-        new Error('FCDraw: All 3 league retries returned no valid players'),
-        'fcDraw - NO_PLAYER'
-    );
-
-    throw new Error('NO_PLAYER');
-}
-
-async function fetchLeagueAttempt(leagueId, season, client) {
-    const paging = await getPagingInfo(leagueId, season, client);
-    const pages = shuffle(range(1, paging.totalPages)).slice(0, MAX_PAGE_ATTEMPTS_PER_LEAGUE);
-    const allPlayers = [];
-    const allValidPlayers = [];
-    const attemptedPages = [];
-
-    for (const page of pages) {
-        const data = page === 1 ? paging.firstPageData : await fetchPlayersPage(leagueId, season, page, client);
-        const players = Array.isArray(data.response) ? data.response : [];
-        const validPlayers = players.filter(isValidPlayerEntry);
-
-        allPlayers.push(...players);
-        allValidPlayers.push(...validPlayers);
-        attemptedPages.push(page);
-
-        console.log(`[FCDraw] Season: ${season} | League: ${leagueId} | Page: ${page} | Players: ${players.length} | Valid: ${validPlayers.length}`);
-
-        if (validPlayers.length) {
-            break;
+                entriesByPlayerId.set(playerId, entry);
+            }
         }
     }
 
-    return {
-        season,
-        pages: attemptedPages,
-        players: allPlayers,
-        validPlayers: allValidPlayers
-    };
+    const pool = Array.from(entriesByPlayerId.values());
+    await savePlayerPool(pool);
+
+    client.fcPlayerPool = pool;
+    console.log(`[FCDraw] Player pool built: ${pool.length} valid players`);
+
+    return pool;
 }
 
-async function getPagingInfo(leagueId, season, client) {
-    const cacheKey = `${leagueId}-${season}`;
-    const cached = pagingCache.get(cacheKey);
-
-    if (cached) {
-        return cached;
+async function savePlayerPool(pool) {
+    if (!pool.length) {
+        return;
     }
 
-    const firstPageData = await fetchPlayersPage(leagueId, season, 1, client);
-    const pagingInfo = {
-        totalPages: getTotalPages(firstPageData),
-        firstPageData
-    };
+    await FCPlayerCache.bulkWrite(
+        pool.map((entry) => {
+            const playerData = normalizePlayer(entry);
 
-    pagingCache.set(cacheKey, pagingInfo);
-
-    return pagingInfo;
-}
-
-async function fetchPlayersPage(leagueId, season, page, client) {
-    return apiGet('/players', {
-        league: leagueId,
-        season,
-        page
-    }, client);
-}
-
-async function logFailedLeagueAttempt(client, leagueId, result) {
-    await safeLogError(
-        client,
-        new Error(`FCDraw: League ${leagueId} season ${result.season} pages ${result.pages.join(', ')} returned ${result.players.length} players, ${result.validPlayers.length} valid`),
-        'fcDraw - player fetch'
+            return {
+                updateOne: {
+                    filter: { playerId: playerData.playerId },
+                    update: {
+                        $set: {
+                            ...playerData,
+                            cachedAt: new Date()
+                        }
+                    },
+                    upsert: true
+                }
+            };
+        }),
+        { ordered: false }
     );
 }
 
-function getTotalPages(data) {
-    const total = Number(data?.paging?.total);
-
-    if (!Number.isFinite(total) || total < 1) {
-        return 1;
-    }
-
-    return Math.floor(total);
-}
-
-function isValidPlayerEntry(entry) {
-    const games = entry.statistics?.[0]?.games;
-    const rating = parseRating(games?.rating);
-    const appearances = Number(games?.appearances ?? games?.appearences);
-
-    return rating !== null && Number.isFinite(appearances) && appearances >= 5;
-}
-
-function shouldTryFallbackSeason(players) {
-    return !players.length;
-}
-
-async function getCachedPlayer(playerId) {
-    const cached = await FCPlayerCache.findOne({ playerId });
-
-    if (!cached?.cachedAt) return null;
-
-    if (Date.now() - cached.cachedAt.getTime() >= CACHE_TTL_MS) {
-        return null;
-    }
-
-    if (cached.rating === null || cached.rating === undefined) {
-        return null;
-    }
-
-    return {
-        playerId: cached.playerId,
-        playerName: cached.playerName,
-        playerPhoto: cached.playerPhoto,
-        club: cached.club,
-        clubLogo: cached.clubLogo,
-        league: cached.league,
-        position: cached.position,
-        rating: cached.rating,
-        rarity: getRarity(cached.rating),
-        stats: cached.stats
-    };
-}
-
-async function cachePlayer(entry) {
-    const playerData = normalizePlayer(entry);
-
-    await FCPlayerCache.findOneAndUpdate(
-        { playerId: playerData.playerId },
-        {
-            ...playerData,
-            cachedAt: new Date()
-        },
-        { upsert: true, new: true, setDefaultsOnInsert: true }
-    );
-
-    return playerData;
+function isRatedPlayerEntry(entry) {
+    return parseRating(entry.statistics?.[0]?.games?.rating) !== null;
 }
 
 function normalizePlayer(entry) {
@@ -375,31 +281,13 @@ function randomItem(items) {
     return items[Math.floor(Math.random() * items.length)];
 }
 
-function randomInt(min, max) {
-    return Math.floor(Math.random() * (max - min + 1)) + min;
-}
-
-function range(min, max) {
-    return Array.from({ length: max - min + 1 }, (_, index) => min + index);
-}
-
-function shuffle(items) {
-    const copy = [...items];
-
-    for (let index = copy.length - 1; index > 0; index -= 1) {
-        const swapIndex = randomInt(0, index);
-        [copy[index], copy[swapIndex]] = [copy[swapIndex], copy[index]];
-    }
-
-    return copy;
-}
-
 function clamp(value, min, max) {
     return Math.min(Math.max(value, min), max);
 }
 
 module.exports = drawCard;
 module.exports.drawCard = drawCard;
+module.exports.buildPlayerPool = buildPlayerPool;
 module.exports.getCurrentWindowStart = getCurrentWindowStart;
 module.exports.getNextReset = getNextReset;
 module.exports.getAvailableCharges = getAvailableCharges;

@@ -6,7 +6,8 @@ const Whitelist = require('../models/Whitelist');
 const BotConfig = require('../models/BotConfig');
 const { startGiveawayPoller } = require('../utils/giveawayManager');
 const startActivityPing = require('../utils/activityPing');
-const { logError } = require('../utils/errorLogger');
+const { logError, logCritical } = require('../utils/errorLogger');
+const { buildPlayerPool } = require('../utils/fcDraw');
 
 module.exports = {
     name: 'clientReady',
@@ -18,6 +19,12 @@ module.exports = {
         client.user.setActivity('your server | >>help', { type: ActivityType.Watching });
 
         await registerSlashCommands(client);
+
+        try {
+            await buildPlayerPool(client);
+        } catch (error) {
+            await logCritical(client, error, 'ready - buildPlayerPool startup');
+        }
 
         try {
             client.disabledCommands = new Set((await DisabledCommand.find()).map(d => d.name));
@@ -94,6 +101,14 @@ module.exports = {
 
         // Keep-alive activity ping
         startActivityPing(client);
+
+        setInterval(async () => {
+            try {
+                await buildPlayerPool(client);
+            } catch (error) {
+                await logError(client, error, 'ready - buildPlayerPool refresh');
+            }
+        }, 24 * 60 * 60 * 1000);
     }
 };
 
