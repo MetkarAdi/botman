@@ -1,6 +1,5 @@
-const { AttachmentBuilder, EmbedBuilder } = require('discord.js');
+const { EmbedBuilder } = require('discord.js');
 const { drawCard, getNextReset, getAvailableCharges } = require('../../utils/fcDraw');
-const generateCard = require('../../utils/cardGenerator');
 const FCCooldown = require('../../models/FCCooldown');
 const { logError } = require('../../utils/errorLogger');
 
@@ -13,11 +12,11 @@ const RARITY_COLORS = {
 };
 
 const RARITY_EMOJIS = {
-    Basic: '⚪',
-    Common: '⭐',
-    Rare: '⭐',
-    Epic: '⭐',
-    Legendary: '⭐'
+    Basic: '\u26aa',
+    Common: '\u2b50',
+    Rare: '\u2b50',
+    Epic: '\u2b50',
+    Legendary: '\u2b50'
 };
 
 module.exports = {
@@ -43,25 +42,7 @@ module.exports = {
             }
 
             const card = await drawCard(message.author.id, client);
-            const image = await generateCard(card);
-            const attachment = new AttachmentBuilder(image, { name: `${card.cardId}.png` });
-            const rarity = card.rarity || 'Basic';
-            const embed = new EmbedBuilder()
-                .setColor(RARITY_COLORS[rarity] || RARITY_COLORS.Basic)
-                .setTitle(`${RARITY_EMOJIS[rarity] || RARITY_EMOJIS.Basic} ${card.playerName}`)
-                .setImage(`attachment://${card.cardId}.png`)
-                .addFields(
-                    { name: 'Club', value: card.club || 'N/A', inline: true },
-                    { name: 'Position', value: card.position || 'N/A', inline: true },
-                    {
-                        name: 'Rating',
-                        value: card.rating === null || card.rating === undefined ? 'N/A' : String(card.rating),
-                        inline: true
-                    },
-                    { name: 'Card ID', value: `#${card.cardId}`, inline: true }
-                );
-
-            await message.reply({ embeds: [embed], files: [attachment] });
+            await message.reply({ embeds: [buildCardEmbed(card, message.author.tag)] });
 
             const updatedCooldown = await FCCooldown.findOne({ userId: message.author.id });
             const remaining = getAvailableCharges(updatedCooldown);
@@ -72,10 +53,39 @@ module.exports = {
             }
 
             await logError(client, error, 'fcdraw');
-            return message.reply('❌ Something went wrong.');
+            return message.reply('Something went wrong.');
         }
     }
 };
+
+function buildCardEmbed(card, drawnBy) {
+    const rarity = card.rarity || 'Basic';
+    const stats = card.stats || {};
+    const embed = new EmbedBuilder()
+        .setColor(RARITY_COLORS[rarity] || RARITY_COLORS.Basic)
+        .setTitle(`${RARITY_EMOJIS[rarity] || RARITY_EMOJIS.Basic} ${formatValue(card.playerName)}`)
+        .addFields(
+            { name: 'Club', value: formatValue(card.club), inline: true },
+            { name: 'League', value: formatValue(card.league), inline: true },
+            { name: 'Position', value: formatValue(card.position), inline: true },
+            { name: 'Rating', value: formatValue(card.rating), inline: true },
+            { name: 'Goals', value: formatValue(stats.goals), inline: true },
+            { name: 'Assists', value: formatValue(stats.assists), inline: true },
+            { name: 'Appearances', value: formatValue(stats.appearances), inline: true },
+            { name: 'Key Passes', value: formatValue(stats.keyPasses), inline: true },
+            { name: 'Dribbles', value: formatValue(stats.dribbles), inline: true },
+            { name: 'Yellow Cards', value: formatValue(stats.yellowCards), inline: true },
+            { name: 'Red Cards', value: formatValue(stats.redCards), inline: true },
+            { name: 'Card ID', value: `#${card.cardId}`, inline: true }
+        )
+        .setFooter({ text: `${rarity} Card · Drawn by ${drawnBy}` });
+
+    if (card.playerPhoto) {
+        embed.setThumbnail(card.playerPhoto);
+    }
+
+    return embed;
+}
 
 function buildCooldownEmbed(errorMessage = null) {
     const parsedReset = Number(errorMessage?.split(':')[1]);
@@ -83,6 +93,10 @@ function buildCooldownEmbed(errorMessage = null) {
 
     return new EmbedBuilder()
         .setColor('#e74c3c')
-        .setTitle('⏳ No Draws Left')
+        .setTitle('No Draws Left')
         .setDescription(`You've used all 5 draws this window. Next reset: <t:${Math.floor(nextReset / 1000)}:R>\nYou get **5 draws per reset window**, **6 resets per day** (every 4 hours).`);
+}
+
+function formatValue(value) {
+    return value === null || value === undefined || value === '' ? 'N/A' : String(value);
 }

@@ -1,8 +1,6 @@
-const { AttachmentBuilder } = require('discord.js');
 const FootballCard = require('../../models/FootballCard');
 const FCCooldown = require('../../models/FCCooldown');
 const FCPlayerCache = require('../../models/FCPlayerCache');
-const generateCard = require('../../utils/cardGenerator');
 const { logError } = require('../../utils/errorLogger');
 
 const API_BASE_URL = 'https://v3.football.api-sports.io';
@@ -82,12 +80,9 @@ async function giveCard(message, args, client) {
         ...playerData,
         rarity: getRarity(playerData.rating)
     });
-    const image = await generateCard(card);
-    const attachment = new AttachmentBuilder(image, { name: `${card.cardId}.png` });
 
     return message.reply({
         content: `✅ Added **${card.playerName}** (${card.rarity}) to ${target.tag}'s collection.`,
-        files: [attachment]
     });
 }
 
