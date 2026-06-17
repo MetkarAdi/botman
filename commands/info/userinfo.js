@@ -1,7 +1,4 @@
 const { EmbedBuilder } = require('discord.js');
-const { getUserBadges, formatDuration } = require('../../utils/helpers');
-const Level = require('../../models/Level');
-const Warning = require('../../models/Warning');
 
 module.exports = {
     name: 'userinfo',
@@ -12,264 +9,143 @@ module.exports = {
     guildOnly: false,
     cooldown: 5,
 
-    async execute(message, args, client, guildData) {
-        const arg = args.join(' ').trim();
-        if (arg) {
-            const member = resolveMember(message, arg);
-            if (!member) {
-                return message.reply('❌ Member not found. Try mentioning them, or providing their username, nickname, or ID.');
-            }
-            args = [member.id];
-        }
+    async execute(message, args, client) {
+        const userId = getUserId(message, args);
 
-        let target;
-        let userId;
-
-        // Try to get user from mention
-        if (message.mentions.users.first()) {
-            target = message.mentions.users.first();
-            userId = target.id;
-        }
-        // Try to get user from ID
-        else if (args[0]) {
-            try {
-                userId = args[0];
-                target = await client.users.fetch(userId, { force: true });
-            } catch (error) {
-                return message.reply('❌ Could not find a user with that ID.');
-            }
-        }
-        // Default to message author
-        else {
-            target = message.author;
-            userId = target.id;
-        }
-
-        if (!target) {
+        if (!userId) {
             return message.reply('❌ Please mention a user or provide a valid user ID.');
         }
 
-        // Force fetch to get banner and accent color
+        let user;
         try {
-            target = await client.users.fetch(userId, { force: true });
+            user = await client.users.fetch(userId, {
+                force: true,
+                cache: true
+            });
         } catch (error) {
-            console.error('Error force-fetching user:', error);
+            if (isUnknownUserError(error)) {
+                return message.reply(`❌ Unknown user: \`${userId}\`.`);
+            }
+
+            console.error('Error fetching user:', error);
+            return message.reply('❌ Could not fetch that user.');
         }
 
-        // Get member data if in guild
-        const member = message.guild?.members.cache.get(target.id);
+        const member = message.guild
+            ? await message.guild.members.fetch({ user: user.id, force: true, cache: true }).catch(() => null)
+            : null;
 
-        // Get badges
-        const badges = getUserBadges(target);
-
-        // Create embed
-        const embed = new EmbedBuilder()
-            .setTitle(`👤 User Information - ${target.username}`)
-            .setThumbnail(target.displayAvatarURL({ dynamic: true, size: 256 }))
-            .setColor(member?.displayHexColor || '#00FFFF')
-            .addFields(
-                { name: '📝 Username', value: target.username, inline: true },
-                { name: '🏷️ Discriminator', value: target.discriminator !== '0' ? `#${target.discriminator}` : 'None', inline: true },
-                { name: '🆔 User ID', value: target.id, inline: true },
-                { name: '🤖 Bot', value: target.bot ? 'Yes' : 'No', inline: true },
-                { name: '🏅 Badges', value: badges.join('\n'), inline: false }
-            )
-            .setFooter({ text: `Requested by ${message.author.tag}`, iconURL: message.author.displayAvatarURL() })
-            .setTimestamp();
-
-        // Add account creation date
-        const createdAt = Math.floor(target.createdTimestamp / 1000);
-        embed.addFields({
-            name: '📅 Account Created',
-            value: `<t:${createdAt}:F> (<t:${createdAt}:R>)`,
-            inline: false
-        });
-
-        // If member is in the guild, add more info
-        if (member) {
-            const joinedAt = Math.floor(member.joinedTimestamp / 1000);
-            embed.addFields({
-                name: '📥 Joined Server',
-                value: `<t:${joinedAt}:F> (<t:${joinedAt}:R>)`,
-                inline: false
-            });
-
-            const memberFlags = member.flags?.toArray().join(', ') || 'None';
-            embed.addFields(
-                { name: 'Member Flags', value: memberFlags, inline: true },
-                { name: 'Voice Channel', value: member.voice.channel?.name || 'Not in voice', inline: true }
-            );
-
-            if (member.communicationDisabledUntil) {
-                embed.addFields({
-                    name: 'Timeout',
-                    value: `<t:${Math.floor(member.communicationDisabledUntil.getTime() / 1000)}:R>`,
-                    inline: true
-                });
-            }
-
-            if (member.pending) {
-                embed.addFields({
-                    name: 'Membership Gate',
-                    value: '⚠️ Pending',
-                    inline: true
-                });
-            }
-
-            const guildAvatarURL = member.avatarURL({ dynamic: true, size: 256 });
-            const globalAvatarURL = target.displayAvatarURL({ dynamic: true, size: 256 });
-            if (guildAvatarURL && guildAvatarURL !== globalAvatarURL) {
-                embed.addFields({
-                    name: 'Server Avatar',
-                    value: `[Click to view](${guildAvatarURL})`,
-                    inline: true
-                });
-            }
-
-            // Add roles
-            const roles = member.roles.cache
-                .filter(role => role.id !== message.guild.id)
-                .sort((a, b) => b.position - a.position)
-                .map(role => role.toString())
-                .slice(0, 10);
-
-            if (roles.length > 0) {
-                embed.addFields({
-                    name: `🎭 Roles [${member.roles.cache.size - 1}]`,
-                    value: roles.join(', ') || 'None',
-                    inline: false
-                });
-            }
-
-            // Add nickname
-            if (member.nickname) {
-                embed.addFields({
-                    name: '🎭 Nickname',
-                    value: member.nickname,
-                    inline: true
-                });
-            }
-
-            // Add presence info
-            if (member.presence) {
-                const status = member.presence.status;
-                const statusEmojis = {
-                    online: '🟢 Online',
-                    idle: '🟡 Idle',
-                    dnd: '🔴 Do Not Disturb',
-                    offline: '⚫ Offline'
-                };
-                embed.addFields({
-                    name: '📊 Status',
-                    value: statusEmojis[status] || status,
-                    inline: true
-                });
-
-                // Add activity
-                const activity = member.presence.activities[0];
-                if (activity) {
-                    let activityText = activity.name;
-                    if (activity.details) activityText += ` - ${activity.details}`;
-                    if (activity.state) activityText += ` (${activity.state})`;
-                    embed.addFields({
-                        name: '🎮 Activity',
-                        value: activityText,
-                        inline: true
-                    });
-                }
-            }
-
-            // Add levelling info if enabled
-            if (guildData?.levellingEnabled) {
-                try {
-                    const levelData = await Level.findOne({
-                        userId: target.id,
-                        guildId: message.guild.id
-                    });
-
-                    if (levelData) {
-                        embed.addFields({
-                            name: '⭐ Level Stats',
-                            value: `Level: ${levelData.level}\nXP: ${levelData.xp}\nMessages: ${levelData.messages}`,
-                            inline: true
-                        });
-                    }
-                } catch (error) {
-                    console.error('Error fetching level data:', error);
-                }
-            }
-
-            // Add warning count if moderation is enabled
-            if (guildData?.moderationEnabled) {
-                try {
-                    const warningCount = await Warning.countDocuments({
-                        userId: target.id,
-                        guildId: message.guild.id
-                    });
-
-                    if (warningCount > 0) {
-                        embed.addFields({
-                            name: '⚠️ Warnings',
-                            value: `${warningCount}`,
-                            inline: true
-                        });
-                    }
-                } catch (error) {
-                    console.error('Error fetching warning count:', error);
-                }
-            }
-
-            // Add permissions
-            const keyPermissions = member.permissions.toArray().filter(perm =>
-                ['Administrator', 'ManageGuild', 'ManageRoles', 'ManageChannels', 'KickMembers', 'BanMembers', 'ManageMessages'].includes(perm)
-            );
-
-            if (keyPermissions.length > 0) {
-                embed.addFields({
-                    name: '🔑 Key Permissions',
-                    value: keyPermissions.join(', '),
-                    inline: false
-                });
-            }
-        } else {
-            embed.setDescription('⚠️ This user is **not in this server**. Showing basic info only.');
-        }
-
-        // Show global banner if user has one (requires Nitro)
-        const bannerURL = target.bannerURL({ dynamic: true, size: 1024 });
-        if (bannerURL) {
-            embed.setImage(bannerURL);
-            embed.addFields({
-                name: 'Global Banner',
-                value: `[Click to view](${bannerURL})`,
-                inline: true
-            });
-        }
-
-        // Show accent color if no banner but has one set
-        if (!bannerURL && target.accentColor) {
-            embed.addFields({
-                name: '🎨 Accent Color',
-                value: `#${target.accentColor.toString(16).padStart(6, '0').toUpperCase()}`,
-                inline: true
-            });
-        }
-
-        message.reply({ embeds: [embed] });
+        return message.reply({ embeds: [buildUserInfoEmbed(user, member, message)] });
     }
 };
 
-function resolveMember(message, arg) {
-    if (!message.guild || !arg) return null;
+function getUserId(message, args) {
+    const arg = args.join(' ').trim();
+    const mentionId = message.mentions.users.first()?.id || arg.match(/^<@!?(\d{17,20})>$/)?.[1];
 
-    const normalizedArg = arg.toLowerCase();
-    const userId = arg.match(/^<@!?(\d+)>$/)?.[1] || arg;
+    if (mentionId) {
+        return mentionId;
+    }
 
-    return message.mentions.members.first() ||
-        message.guild.members.cache.get(userId) ||
-        message.guild.members.cache.find(m => m.user.tag.toLowerCase() === normalizedArg) ||
-        message.guild.members.cache.find(m => m.displayName.toLowerCase() === normalizedArg) ||
-        message.guild.members.cache.find(m => m.displayName.toLowerCase().includes(normalizedArg)) ||
-        message.guild.members.cache.find(m => m.user.username.toLowerCase().includes(normalizedArg)) ||
-        null;
+    if (/^\d{17,20}$/.test(arg)) {
+        return arg;
+    }
+
+    if (!arg) {
+        return message.author.id;
+    }
+
+    return null;
+}
+
+function buildUserInfoEmbed(user, member, message) {
+    const avatarURL = user.displayAvatarURL({ size: 256 });
+    const bannerURL = user.bannerURL({ size: 1024 });
+    const embed = new EmbedBuilder()
+        .setTitle(`User Information - ${user.username}`)
+        .setThumbnail(avatarURL)
+        .setColor(member?.displayHexColor || user.hexAccentColor || '#00FFFF')
+        .addFields(
+            { name: 'Username', value: formatValue(user.username), inline: true },
+            { name: 'Global Name', value: formatValue(user.globalName), inline: true },
+            { name: 'User ID', value: user.id, inline: true },
+            { name: 'Avatar URL', value: avatarURL ? `[Click to view](${avatarURL})` : 'None', inline: false },
+            { name: 'Banner URL', value: bannerURL ? `[Click to view](${bannerURL})` : 'None', inline: false },
+            { name: 'Accent Color', value: formatAccentColor(user), inline: true },
+            { name: 'Created', value: formatTimestamp(user.createdTimestamp), inline: false },
+            { name: 'Bot', value: user.bot ? 'Yes' : 'No', inline: true },
+            { name: 'System', value: user.system ? 'Yes' : 'No', inline: true }
+        )
+        .setFooter({ text: `Requested by ${message.author.tag}`, iconURL: message.author.displayAvatarURL() })
+        .setTimestamp();
+
+    if (bannerURL) {
+        embed.setImage(bannerURL);
+    }
+
+    if (member) {
+        embed.addFields(
+            { name: 'Nickname', value: formatValue(member.nickname), inline: true },
+            { name: 'Joined Server', value: formatTimestamp(member.joinedTimestamp), inline: false },
+            { name: 'Boost Status', value: member.premiumSinceTimestamp ? `Boosting since ${formatTimestamp(member.premiumSinceTimestamp)}` : 'Not boosting', inline: false },
+            { name: `Roles [${Math.max(member.roles.cache.size - 1, 0)}]`, value: formatRoles(member), inline: false },
+            { name: 'Permissions', value: formatPermissions(member), inline: false }
+        );
+    } else {
+        embed.setDescription('This user is not a member of this server. Showing global user information only.');
+    }
+
+    return embed;
+}
+
+function formatRoles(member) {
+    const roles = member.roles.cache
+        .filter((role) => role.id !== member.guild.id)
+        .sort((a, b) => b.position - a.position)
+        .map((role) => role.toString());
+
+    return truncate(roles.join(', ') || 'None');
+}
+
+function formatPermissions(member) {
+    return truncate(member.permissions.toArray().join(', ') || 'None');
+}
+
+function formatTimestamp(timestamp) {
+    if (!timestamp) {
+        return 'N/A';
+    }
+
+    const unix = Math.floor(timestamp / 1000);
+    return `<t:${unix}:F> (<t:${unix}:R>)`;
+}
+
+function formatAccentColor(user) {
+    if (user.hexAccentColor) {
+        return user.hexAccentColor.toUpperCase();
+    }
+
+    if (typeof user.accentColor === 'number') {
+        return `#${user.accentColor.toString(16).padStart(6, '0').toUpperCase()}`;
+    }
+
+    return 'None';
+}
+
+function formatValue(value) {
+    return value === null || value === undefined || value === '' ? 'None' : String(value);
+}
+
+function truncate(value, maxLength = 1024) {
+    if (value.length <= maxLength) {
+        return value;
+    }
+
+    return `${value.slice(0, maxLength - 3)}...`;
+}
+
+function isUnknownUserError(error) {
+    return error?.code === 10013 ||
+        error?.status === 404 ||
+        String(error?.message || '').toLowerCase().includes('unknown user');
 }
