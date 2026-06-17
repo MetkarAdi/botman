@@ -96,18 +96,68 @@ async function drawCard(userId, client) {
         throw new Error('PLAYER_POOL_INVALID');
     }
 
-    const playerData = entry.playerId ? normalizePooledPlayer(entry) : normalizePlayer(entry);
-    const cardId = generateCardId();
-    const card = new FootballCard({
-        userId,
-        cardId,
-        ...playerData
-    });
+    const card = buildFootballCard(userId, normalizePlayerData(entry));
 
     cooldown.chargesUsed = (cooldown.chargesUsed || 0) + 1;
     await cooldown.save();
 
     return card.save();
+}
+
+async function awardFootballCard(userId, cardRequest, client) {
+    const resolved = typeof cardRequest === 'string'
+        ? await resolveFootballCard(cardRequest, client)
+        : cardRequest;
+
+    if (!resolved?.playerData) {
+        return null;
+    }
+
+    return buildFootballCard(userId, resolved.playerData).save();
+}
+
+async function resolveFootballCard(query, client) {
+    const normalizedQuery = stripWrappingQuotes(query).trim();
+
+    if (!normalizedQuery) {
+        return null;
+    }
+
+    const existingById = await FootballCard.findOne({ cardId: normalizedQuery.toUpperCase() }).lean();
+
+    if (existingById) {
+        return {
+            source: 'collection',
+            playerData: normalizeCardData(existingById),
+            existingCard: existingById
+        };
+    }
+
+    const existingByName = await FootballCard.findOne({
+        playerName: { $regex: escapeRegex(normalizedQuery), $options: 'i' }
+    }).lean();
+
+    if (existingByName) {
+        return {
+            source: 'collection',
+            playerData: normalizeCardData(existingByName),
+            existingCard: existingByName
+        };
+    }
+
+    const poolEntry = getPlayerPool(client).find((player) => (
+        getPoolPlayerName(player).toLowerCase().includes(normalizedQuery.toLowerCase())
+    ));
+
+    if (!poolEntry) {
+        return null;
+    }
+
+    return {
+        source: 'pool',
+        playerData: normalizePlayerData(poolEntry),
+        poolEntry
+    };
 }
 
 async function buildPlayerPool(client) {
@@ -155,6 +205,36 @@ function normalizePooledPlayer(entry) {
     };
 }
 
+function normalizePlayerData(entry) {
+    return entry.playerId ? normalizePooledPlayer(entry) : normalizePlayer(entry);
+}
+
+function normalizeCardData(card) {
+    const rating = parseRating(card.rating);
+
+    return {
+        playerId: card.playerId,
+        playerName: card.playerName,
+        playerPhoto: card.playerPhoto,
+        club: card.club,
+        clubLogo: card.clubLogo,
+        league: card.league,
+        position: card.position,
+        rating,
+        rarity: card.rarity || getRarity(rating),
+        stats: {
+            goals: numberOrZero(card.stats?.goals),
+            assists: numberOrZero(card.stats?.assists),
+            appearances: numberOrZero(card.stats?.appearances),
+            passAccuracy: numberOrZero(card.stats?.passAccuracy),
+            dribbles: numberOrZero(card.stats?.dribbles),
+            keyPasses: numberOrZero(card.stats?.keyPasses),
+            yellowCards: numberOrZero(card.stats?.yellowCards),
+            redCards: numberOrZero(card.stats?.redCards)
+        }
+    };
+}
+
 function normalizePlayer(entry) {
     const player = entry.player || {};
     const statistics = entry.statistics?.[0] || {};
@@ -187,6 +267,14 @@ function generateCardId() {
     return Math.random().toString(36).slice(2, 10).toUpperCase();
 }
 
+function buildFootballCard(userId, playerData) {
+    return new FootballCard({
+        userId,
+        cardId: generateCardId(),
+        ...playerData
+    });
+}
+
 function getRarity(rating) {
     if (rating === null || rating === undefined || rating < 6) return 'Basic';
     if (rating < 7) return 'Common';
@@ -213,9 +301,31 @@ function clamp(value, min, max) {
     return Math.min(Math.max(value, min), max);
 }
 
+function getPlayerPool(client) {
+    if (Array.isArray(client?.fcPlayerPool) && client.fcPlayerPool.length > 0) {
+        return client.fcPlayerPool;
+    }
+
+    return require('../data/playerPool.json');
+}
+
+function getPoolPlayerName(player) {
+    return player.playerName || player.player?.name || '';
+}
+
+function stripWrappingQuotes(value) {
+    return String(value || '').replace(/^["']|["']$/g, '');
+}
+
+function escapeRegex(value) {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 module.exports = drawCard;
 module.exports.drawCard = drawCard;
 module.exports.buildPlayerPool = buildPlayerPool;
+module.exports.awardFootballCard = awardFootballCard;
+module.exports.resolveFootballCard = resolveFootballCard;
 module.exports.getCurrentWindowStart = getCurrentWindowStart;
 module.exports.getNextReset = getNextReset;
 module.exports.getAvailableCharges = getAvailableCharges;

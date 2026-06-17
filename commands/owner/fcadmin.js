@@ -1,10 +1,7 @@
-const FootballCard = require('../../models/FootballCard');
+const { EmbedBuilder } = require('discord.js');
 const FCCooldown = require('../../models/FCCooldown');
-const FCPlayerCache = require('../../models/FCPlayerCache');
+const { awardFootballCard, resolveFootballCard } = require('../../utils/fcDraw');
 const { logError } = require('../../utils/errorLogger');
-
-const API_BASE_URL = 'https://v3.football.api-sports.io';
-const SEASON = 2024;
 
 module.exports = {
     name: 'fcadmin',
@@ -16,6 +13,10 @@ module.exports = {
     cooldown: 0,
 
     async execute(message, args, client) {
+        if (!isBotOwner(message, client)) {
+            return message.reply('❌ This command is restricted to the bot owner.');
+        }
+
         const subcommand = args[0]?.toLowerCase();
 
         try {
@@ -31,7 +32,7 @@ module.exports = {
                 return resetAllCooldowns(message);
             }
 
-            return message.reply('Usage: `>>fcadmin reset @user`, `>>fcadmin give @user <playerName>`, or `>>fcadmin resetall`');
+            return message.reply('Usage: `>>fcadmin reset @user`, `>>fcadmin give @user <playerName|cardId>`, or `>>fcadmin resetall`');
         } catch (error) {
             await logError(client, error, 'fcadmin');
             return message.reply('❌ Something went wrong.');
@@ -62,28 +63,31 @@ async function giveCard(message, args, client) {
         return message.reply('❌ Please mention a user or provide a valid user ID.');
     }
 
-    const playerName = args.slice(2).join(' ').trim();
+    const cardQuery = args.slice(2).join(' ').trim();
 
-    if (!playerName) {
-        return message.reply('Usage: `>>fcadmin give @user <playerName>`');
+    if (!cardQuery) {
+        return message.reply('Usage: `>>fcadmin give @user <playerName|cardId>`');
     }
 
-    const playerData = await findPlayer(playerName);
+    const resolved = await resolveFootballCard(cardQuery, client);
 
-    if (!playerData) {
-        return message.reply('❌ Player not found.');
+    if (!resolved) {
+        return message.reply(`❌ Card not found for \`${stripWrappingQuotes(cardQuery)}\`.`);
     }
 
-    const card = await FootballCard.create({
-        userId: target.id,
-        cardId: generateCardId(),
-        ...playerData,
-        rarity: getRarity(playerData.rating)
-    });
+    let card;
+    try {
+        card = await awardFootballCard(target.id, resolved, client);
+    } catch (error) {
+        await logError(client, error, 'fcadmin give save');
+        return message.reply('❌ Failed to save the card to that user\'s collection.');
+    }
 
-    return message.reply({
-        content: `✅ Added **${card.playerName}** (${card.rarity}) to ${target.tag}'s collection.`,
-    });
+    if (!card) {
+        return message.reply(`❌ Card not found for \`${stripWrappingQuotes(cardQuery)}\`.`);
+    }
+
+    return message.reply({ embeds: [buildGiveEmbed(target, card)] });
 }
 
 async function resetAllCooldowns(message) {
@@ -98,118 +102,34 @@ async function resolveTargetUser(message, rawArg, client) {
     const userId = rawArg?.replace(/[<@!>]/g, '');
     if (!userId || !/^\d{17,20}$/.test(userId)) return null;
 
-    return client.users.fetch(userId).catch(() => null);
+    return client.users.fetch(userId, { force: true, cache: true }).catch(() => null);
 }
 
-async function findPlayer(playerName) {
-    const cached = await FCPlayerCache.findOne({
-        playerName: { $regex: escapeRegex(playerName), $options: 'i' }
-    }).lean();
+function buildGiveEmbed(target, card) {
+    const embed = new EmbedBuilder()
+        .setColor('#2ecc71')
+        .setTitle('Football Card Added')
+        .addFields(
+            { name: 'Recipient', value: `${target.tag || target.username} (${target.id})`, inline: false },
+            { name: 'Card', value: card.playerName || 'Unknown Player', inline: true },
+            { name: 'Rarity', value: card.rarity || 'Basic', inline: true },
+            { name: 'Club', value: card.club || 'N/A', inline: true },
+            { name: 'Position', value: card.position || 'N/A', inline: true }
+        )
+        .setFooter({ text: `Card ID #${card.cardId}` });
 
-    if (cached) {
-        return normalizeCachedPlayer(cached);
+    if (card.playerPhoto) {
+        embed.setThumbnail(card.playerPhoto);
     }
 
-    const apiEntry = await fetchPlayerBySearch(playerName);
-
-    if (!apiEntry) {
-        return null;
-    }
-
-    return normalizeApiPlayer(apiEntry);
+    return embed;
 }
 
-async function fetchPlayerBySearch(playerName) {
-    const { default: fetch } = await import('node-fetch');
-    const url = new URL(`${API_BASE_URL}/players`);
-    url.searchParams.set('search', playerName);
-    url.searchParams.set('season', String(SEASON));
-
-    const response = await fetch(url.toString(), {
-        headers: { 'x-apisports-key': getApiKey() }
-    });
-
-    if (!response.ok) {
-        throw new Error(`Football API request failed with status ${response.status}`);
-    }
-
-    const data = await response.json();
-    const players = Array.isArray(data.response) ? data.response : [];
-    return players[0] || null;
+function isBotOwner(message, client) {
+    const ownerIds = [client.config?.ownerId, process.env.OWNER_ID].filter(Boolean);
+    return ownerIds.includes(message.author.id);
 }
 
-function normalizeCachedPlayer(cached) {
-    return {
-        playerId: cached.playerId,
-        playerName: cached.playerName,
-        playerPhoto: cached.playerPhoto,
-        club: cached.club,
-        clubLogo: cached.clubLogo,
-        league: cached.league,
-        position: cached.position,
-        rating: parseRating(cached.rating),
-        stats: cached.stats || {}
-    };
-}
-
-function normalizeApiPlayer(entry) {
-    const player = entry.player || {};
-    const statistics = entry.statistics?.[0] || {};
-
-    return {
-        playerId: player.id,
-        playerName: player.name,
-        playerPhoto: player.photo,
-        club: statistics.team?.name,
-        clubLogo: statistics.team?.logo,
-        league: statistics.league?.name,
-        position: statistics.games?.position,
-        rating: parseRating(statistics.games?.rating),
-        stats: {
-            goals: numberOrZero(statistics.goals?.total),
-            assists: numberOrZero(statistics.goals?.assists),
-            appearances: numberOrZero(statistics.games?.appearences),
-            passAccuracy: numberOrZero(statistics.passes?.accuracy),
-            dribbles: numberOrZero(statistics.dribbles?.success),
-            keyPasses: numberOrZero(statistics.passes?.key),
-            yellowCards: numberOrZero(statistics.cards?.yellow),
-            redCards: numberOrZero(statistics.cards?.red)
-        }
-    };
-}
-
-function getApiKey() {
-    const apiKey = process.env.FOOTBALL_API_KEY?.replace(/[\r\n]/g, '').trim();
-
-    if (!apiKey) {
-        throw new Error('FOOTBALL_API_KEY is not set');
-    }
-
-    return apiKey;
-}
-
-function getRarity(rating) {
-    if (rating === null || rating === undefined || rating < 6) return 'Basic';
-    if (rating < 7) return 'Common';
-    if (rating < 8) return 'Rare';
-    if (rating < 9) return 'Epic';
-    return 'Legendary';
-}
-
-function parseRating(value) {
-    const rating = Number.parseFloat(value);
-    return Number.isNaN(rating) ? null : rating;
-}
-
-function numberOrZero(value) {
-    const number = Number(value);
-    return Number.isFinite(number) ? number : 0;
-}
-
-function generateCardId() {
-    return Math.random().toString(36).slice(2, 10).toUpperCase();
-}
-
-function escapeRegex(value) {
-    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+function stripWrappingQuotes(value) {
+    return String(value || '').replace(/^["']|["']$/g, '');
 }

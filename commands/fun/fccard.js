@@ -1,6 +1,5 @@
 const { EmbedBuilder } = require('discord.js');
-const FootballCard = require('../../models/FootballCard');
-const playerPool = require('../../data/playerPool.json');
+const { resolveFootballCard } = require('../../utils/fcDraw');
 const { logError } = require('../../utils/errorLogger');
 
 const RARITY_COLORS = {
@@ -34,21 +33,14 @@ module.exports = {
         }
 
         try {
-            const card = await FootballCard.findOne({ cardId: arg.toUpperCase() })
-                || await FootballCard.findOne({
-                    playerName: { $regex: escapeRegex(arg), $options: 'i' }
-                });
+            const resolved = await resolveFootballCard(arg, client);
 
-            if (card) {
-                return message.reply({ embeds: [buildCardEmbed(card)] });
+            if (resolved?.existingCard) {
+                return message.reply({ embeds: [buildCardEmbed(resolved.existingCard)] });
             }
 
-            const poolPlayer = playerPool.find((player) => (
-                player.playerName || ''
-            ).toLowerCase().includes(arg.toLowerCase()));
-
-            if (poolPlayer) {
-                return message.reply({ embeds: [buildPoolCardEmbed(poolPlayer)] });
+            if (resolved?.playerData) {
+                return message.reply({ embeds: [buildPoolCardEmbed(resolved.playerData)] });
             }
 
             return message.reply(`\u274c No card or player found matching ${arg}. Try a player name or card ID.`);
@@ -129,8 +121,4 @@ function getRarity(rating) {
 
 function formatValue(value) {
     return value === null || value === undefined || value === '' ? 'N/A' : String(value);
-}
-
-function escapeRegex(value) {
-    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
