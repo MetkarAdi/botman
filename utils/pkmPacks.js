@@ -6,16 +6,38 @@ const CARDS_PER_PACK = 5;
 const DEFAULT_RARITY_COLOR = '#95a5a6';
 const DEFAULT_RARITY_WEIGHT = 2;
 
+const TCGDEX_SETS = {
+    'A1-genetic-apex': createSet('A1', 'Genetic Apex'),
+    'A1a-mythical-island': createSet('A1a', 'Mythical Island'),
+    'A2-space-time-smackdown': createSet('A2', 'Space-Time Smackdown'),
+    'A2a-triumphant-light': createSet('A2a', 'Triumphant Light'),
+    'A3-celestial-guardians': createSet('A3', 'Celestial Guardians'),
+    'A3a-extradimensional-crisis': createSet('A3a', 'Extradimensional Crisis'),
+    'A4-wisdom-of-sea-and-sky': createSet('A4', 'Wisdom of Sea and Sky')
+};
+
+const PACK_TO_SET = {
+    charizard: 'A1-genetic-apex',
+    mewtwo: 'A1-genetic-apex',
+    pikachu: 'A1-genetic-apex',
+    dialga: 'A2-space-time-smackdown',
+    palkia: 'A2-space-time-smackdown',
+    solgaleo: 'A3-celestial-guardians',
+    lunala: 'A3-celestial-guardians',
+    'ho-oh': 'A4-wisdom-of-sea-and-sky',
+    lugia: 'A4-wisdom-of-sea-and-sky'
+};
+
 const PACKS = {
-    charizard: createPack('Charizard Pack', 'A1', 'Charizard'),
-    mewtwo: createPack('Mewtwo Pack', 'A1', 'Mewtwo'),
-    pikachu: createPack('Pikachu Pack', 'A1', 'Pikachu'),
-    dialga: createPack('Dialga Pack', 'A2', 'Dialga'),
-    palkia: createPack('Palkia Pack', 'A2', 'Palkia'),
-    solgaleo: createPack('Solgaleo Pack', 'A3', 'Solgaleo'),
-    lunala: createPack('Lunala Pack', 'A3', 'Lunala'),
-    'ho-oh': createPack('Ho-Oh Pack', 'A3a', 'Ho-Oh'),
-    lugia: createPack('Lugia Pack', 'A3a', 'Lugia')
+    charizard: createPack('charizard', 'Charizard Pack', 'Charizard'),
+    mewtwo: createPack('mewtwo', 'Mewtwo Pack', 'Mewtwo'),
+    pikachu: createPack('pikachu', 'Pikachu Pack', 'Pikachu'),
+    dialga: createPack('dialga', 'Dialga Pack', 'Dialga'),
+    palkia: createPack('palkia', 'Palkia Pack', 'Palkia'),
+    solgaleo: createPack('solgaleo', 'Solgaleo Pack', 'Solgaleo'),
+    lunala: createPack('lunala', 'Lunala Pack', 'Lunala'),
+    'ho-oh': createPack('ho-oh', 'Ho-Oh Pack', 'Ho-Oh'),
+    lugia: createPack('lugia', 'Lugia Pack', 'Lugia')
 };
 
 const RARITY_COLORS = {
@@ -42,7 +64,8 @@ const RARITY_WEIGHTS = {
 
 async function fetchSetCards(setId) {
     const { default: fetch } = await import('node-fetch');
-    const url = `${TCGDEX_API_BASE}/sets/${encodeURIComponent(setId)}/cards`;
+    const set = resolveTcgdexSet(setId);
+    const url = `${TCGDEX_API_BASE}/sets/${encodeURIComponent(set.tcgdexSetId)}`;
 
     try {
         const response = await fetch(url);
@@ -51,15 +74,21 @@ async function fetchSetCards(setId) {
             throw new Error(`TCGdex request failed with status ${response.status}`);
         }
 
-        const cards = await response.json();
+        const data = await response.json();
+        const cards = data.cards;
 
         if (!Array.isArray(cards)) {
-            throw new Error('TCGdex response was not an array');
+            throw new Error('TCGdex response did not include a cards array');
         }
 
-        return cards;
+        return cards.map((card) => ({
+            ...card,
+            setId,
+            tcgdexSetId: data.id || set.tcgdexSetId,
+            setName: data.name || set.setName
+        }));
     } catch (error) {
-        throw new Error(`Failed to fetch TCGdex set ${setId}: ${error.message}`);
+        throw new Error(`Failed to fetch TCGdex set ${setId} (API id ${set.tcgdexSetId}): ${error.message}`);
     }
 }
 
@@ -95,7 +124,7 @@ async function generatePack(packId, userId) {
         cardId: generateCardId(),
         packId: normalizedPackId,
         setId: pack.setId,
-        setName: card.set?.name || card.setName || pack.label,
+        setName: card.setName || pack.setName,
         tcgdexId: card.id,
         localId: card.localId,
         name: card.name,
@@ -153,13 +182,44 @@ function drawWeightedCard(cardsByRarity) {
     return randomItem(rarityEntries[rarityEntries.length - 1].cards);
 }
 
-function createPack(label, setId, featuredPokemon) {
+function createSet(tcgdexSetId, setName) {
+    return {
+        tcgdexSetId,
+        setName,
+        packArtUrl: `https://assets.tcgdex.net/en/tcgp/${tcgdexSetId}/logo`
+    };
+}
+
+function createPack(packId, label, featuredPokemon) {
+    const setKey = PACK_TO_SET[packId];
+    const set = TCGDEX_SETS[setKey];
+
     return {
         label,
-        setId,
+        setId: setKey,
+        tcgdexSetId: set.tcgdexSetId,
+        setName: set.setName,
         featuredPokemon,
-        packArtUrl: `https://assets.tcgdex.net/en/${setId}/logo.png`
+        packArtUrl: set.packArtUrl
     };
+}
+
+function resolveTcgdexSet(setId) {
+    const normalizedSetId = String(setId || '').trim();
+    const mappedSet = TCGDEX_SETS[normalizedSetId];
+
+    if (mappedSet) {
+        return mappedSet;
+    }
+
+    const setFromApiId = Object.values(TCGDEX_SETS)
+        .find((set) => set.tcgdexSetId.toLowerCase() === normalizedSetId.toLowerCase());
+
+    if (setFromApiId) {
+        return setFromApiId;
+    }
+
+    throw new Error(`Unknown TCGdex Pokemon TCG Pocket set: ${setId}`);
 }
 
 function getCardRarity(card) {
@@ -180,6 +240,8 @@ function randomItem(items) {
 
 module.exports = {
     PACKS,
+    PACK_TO_SET,
+    TCGDEX_SETS,
     RARITY_COLORS,
     getRarityColor,
     fetchSetCards,
