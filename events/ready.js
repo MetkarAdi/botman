@@ -26,6 +26,8 @@ module.exports = {
             await logCritical(client, error, 'ready - buildPlayerPool startup');
         }
 
+        console.log('[PkmnPacks] Pokémon pack system ready. No startup fetch required.');
+
         try {
             client.disabledCommands = new Set((await DisabledCommand.find()).map(d => d.name));
             console.log(`Loaded ${client.disabledCommands.size} disabled command(s)`);

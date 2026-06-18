@@ -106,6 +106,8 @@ module.exports = {
                 if (interaction.customId.startsWith('giveaway_')) {
                     return await require('./giveawayInteraction').execute(interaction, client);
                 }
+
+                if (interaction.customId.startsWith('pkm_')) return;
             } catch (error) {
                 await logError(client, error, `interactionCreate — ${interaction.customId}`);
             }
