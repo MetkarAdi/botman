@@ -5,6 +5,10 @@ const GOD_PACK_CHANCE = 0.0005;
 const CARDS_PER_PACK = 5;
 const DEFAULT_RARITY_COLOR = '#95a5a6';
 const DEFAULT_RARITY_WEIGHT = 2;
+const DETAIL_FETCH_CONCURRENCY = 12;
+
+const setCardCache = new Map();
+const pocketSetCache = { loadedAt: 0, sets: null };
 
 const TCGDEX_SETS = {
     'A1-genetic-apex': createSet('A1', 'Genetic Apex'),
@@ -41,30 +45,42 @@ const PACKS = {
 };
 
 const RARITY_COLORS = {
-    Common: '#95a5a6',
-    Uncommon: '#2ecc71',
-    Rare: '#3498db',
-    'Rare Holo': '#9b59b6',
-    'Double Rare': '#e67e22',
-    'Illustration Rare': '#e91e8c',
-    'Special Illustration Rare': '#e74c3c',
-    'Hyper Rare': '#f1c40f'
+    'One Diamond': '#95a5a6',
+    'Two Diamond': '#2ecc71',
+    'Three Diamond': '#3498db',
+    'Four Diamond': '#9b59b6',
+    'One Star': '#e67e22',
+    'Two Star': '#e91e8c',
+    'Three Star': '#e74c3c',
+    'One Shiny': '#1abc9c',
+    'Two Shiny': '#16a085',
+    Crown: '#f1c40f',
+    None: '#7f8c8d'
 };
 
 const RARITY_WEIGHTS = {
-    Common: 60,
-    Uncommon: 25,
-    Rare: 8,
-    'Rare Holo': 4,
-    'Double Rare': 1.5,
-    'Illustration Rare': 0.8,
-    'Special Illustration Rare': 0.15,
-    'Hyper Rare': 0.05
+    'One Diamond': 60,
+    'Two Diamond': 25,
+    'Three Diamond': 8,
+    'Four Diamond': 4,
+    'One Star': 1.5,
+    'Two Star': 0.8,
+    'Three Star': 0.15,
+    'One Shiny': 0.3,
+    'Two Shiny': 0.12,
+    Crown: 0.05,
+    None: 2
 };
 
 async function fetchSetCards(setId) {
+    const normalizedSetId = String(setId || '').trim();
+
+    if (setCardCache.has(normalizedSetId)) {
+        return setCardCache.get(normalizedSetId);
+    }
+
     const { default: fetch } = await import('node-fetch');
-    const set = resolveTcgdexSet(setId);
+    const set = resolveTcgdexSet(normalizedSetId);
     const url = `${TCGDEX_API_BASE}/sets/${encodeURIComponent(set.tcgdexSetId)}`;
 
     try {
@@ -81,15 +97,130 @@ async function fetchSetCards(setId) {
             throw new Error('TCGdex response did not include a cards array');
         }
 
-        return cards.map((card) => ({
-            ...card,
-            setId,
-            tcgdexSetId: data.id || set.tcgdexSetId,
-            setName: data.name || set.setName
-        }));
+        const detailedCards = await mapWithConcurrency(cards, DETAIL_FETCH_CONCURRENCY, async (card) => {
+            const detail = await fetchCardDetail(card.id, fetch);
+
+            return {
+                ...card,
+                ...detail,
+                setId: normalizedSetId,
+                tcgdexSetId: data.id || set.tcgdexSetId,
+                setName: data.name || set.setName
+            };
+        });
+
+        setCardCache.set(normalizedSetId, detailedCards);
+        return detailedCards;
     } catch (error) {
-        throw new Error(`Failed to fetch TCGdex set ${setId} (API id ${set.tcgdexSetId}): ${error.message}`);
+        throw new Error(`Failed to fetch TCGdex set ${normalizedSetId} (API id ${set.tcgdexSetId}): ${error.message}`);
     }
+}
+
+async function searchPocketCards(query) {
+    const normalizedQuery = String(query || '').trim().toLowerCase();
+
+    if (!normalizedQuery) {
+        return [];
+    }
+
+    const sets = await fetchPocketSets();
+    const summariesBySet = await mapWithConcurrency(sets, 4, async (set) => {
+        const summaries = await fetchSetSummaries(set.id);
+
+        return summaries
+            .filter((card) => card.name?.toLowerCase().includes(normalizedQuery) || card.id?.toLowerCase() === normalizedQuery)
+            .map((card) => ({
+                ...card,
+                setId: set.id,
+                tcgdexSetId: set.tcgdexSetId,
+                setName: set.name
+            }));
+    });
+    const matches = summariesBySet.flat();
+    const { default: fetch } = await import('node-fetch');
+    const details = await mapWithConcurrency(matches, DETAIL_FETCH_CONCURRENCY, async (card) => {
+        const detail = await fetchCardDetail(card.id, fetch);
+
+        return {
+            ...card,
+            ...detail,
+            setId: card.setId,
+            tcgdexSetId: card.tcgdexSetId,
+            setName: card.setName
+        };
+    });
+
+    return details.sort(comparePocketCards);
+}
+
+async function fetchPocketSets() {
+    if (pocketSetCache.sets) {
+        return pocketSetCache.sets;
+    }
+
+    const { default: fetch } = await import('node-fetch');
+    const response = await fetch(`${TCGDEX_API_BASE}/series/tcgp`);
+
+    if (!response.ok) {
+        throw new Error(`Failed to fetch TCGdex Pocket series with status ${response.status}`);
+    }
+
+    const data = await response.json();
+    const sets = Array.isArray(data.sets) ? data.sets : [];
+
+    pocketSetCache.sets = sets.map((set) => ({
+        id: set.id,
+        tcgdexSetId: set.id,
+        name: set.name
+    }));
+
+    return pocketSetCache.sets;
+}
+
+async function fetchSetSummaries(setId) {
+    const { default: fetch } = await import('node-fetch');
+    const response = await fetch(`${TCGDEX_API_BASE}/sets/${encodeURIComponent(setId)}`);
+
+    if (!response.ok) {
+        throw new Error(`Failed to fetch TCGdex set ${setId} with status ${response.status}`);
+    }
+
+    const data = await response.json();
+    return Array.isArray(data.cards) ? data.cards : [];
+}
+
+async function fetchCardDetail(cardId, fetch) {
+    const response = await fetch(`${TCGDEX_API_BASE}/cards/${encodeURIComponent(cardId)}`);
+
+    if (!response.ok) {
+        throw new Error(`TCGdex card ${cardId} failed with status ${response.status}`);
+    }
+
+    return response.json();
+}
+
+async function mapWithConcurrency(items, limit, mapper) {
+    const results = [];
+    let index = 0;
+
+    async function worker() {
+        while (index < items.length) {
+            const currentIndex = index;
+            index += 1;
+            results[currentIndex] = await mapper(items[currentIndex], currentIndex);
+        }
+    }
+
+    await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+    return results;
+}
+
+function comparePocketCards(a, b) {
+    if ((a.tcgdexSetId || a.setId) !== (b.tcgdexSetId || b.setId)) {
+        return String(a.tcgdexSetId || a.setId).localeCompare(String(b.tcgdexSetId || b.setId), undefined, { numeric: true });
+    }
+
+    return String(a.localId || '').localeCompare(String(b.localId || ''), undefined, { numeric: true });
 }
 
 async function generatePack(packId, userId) {
@@ -111,7 +242,7 @@ async function generatePack(packId, userId) {
     }
 
     const cardsByRarity = groupCardsByRarity(cardPool);
-    const highRarityCards = cardPool.filter((card) => !['Common', 'Uncommon'].includes(getCardRarity(card)));
+    const highRarityCards = cardPool.filter((card) => !['One Diamond', 'Two Diamond'].includes(getCardRarity(card)));
     const isGodPack = Math.random() < GOD_PACK_CHANCE && highRarityCards.length > 0;
     const drawnCards = Array.from({ length: CARDS_PER_PACK }, () => (
         isGodPack
@@ -223,7 +354,7 @@ function resolveTcgdexSet(setId) {
 }
 
 function getCardRarity(card) {
-    return card.rarity || 'Common';
+    return card.rarity || 'Unknown';
 }
 
 function getImageUrl(card) {
@@ -245,5 +376,6 @@ module.exports = {
     RARITY_COLORS,
     getRarityColor,
     fetchSetCards,
+    searchPocketCards,
     generatePack
 };

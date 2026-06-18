@@ -104,7 +104,7 @@ function buildCardEmbed(card, index, total, displayName, packFilter) {
     return new EmbedBuilder()
         .setColor(getRarityColor(card.rarity))
         .setTitle(card.name || 'Unknown Card')
-        .setDescription(card.rarity || 'Common')
+        .setDescription(card.rarity || 'Unknown')
         .setImage(card.imageUrl)
         .addFields(
             { name: 'Set', value: card.setName || 'N/A', inline: true },

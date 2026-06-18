@@ -183,7 +183,7 @@ function buildCardEmbed(card, index, total, isGodPack = false) {
         .setTitle(card.name || 'Unknown Card')
         .setImage(card.imageUrl)
         .addFields(
-            { name: 'Rarity', value: card.rarity || 'Common', inline: true },
+            { name: 'Rarity', value: card.rarity || 'Unknown', inline: true },
             { name: 'Set', value: card.setName || card.setId || 'N/A', inline: true },
             { name: 'Card No.', value: card.localId || 'N/A', inline: true }
         )

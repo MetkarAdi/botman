@@ -1,36 +1,72 @@
-const { EmbedBuilder } = require('discord.js');
-const PkmnCard = require('../../models/PkmnCard');
-const { getRarityColor } = require('../../utils/pkmPacks');
+const {
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle,
+    EmbedBuilder
+} = require('discord.js');
+const { getRarityColor, searchPocketCards } = require('../../utils/pkmPacks');
 const { logError } = require('../../utils/errorLogger');
 
 module.exports = {
     name: 'pkmcard',
     aliases: ['pkcard', 'pcard'],
-    description: 'View a Pokémon card by card ID',
-    usage: 'pkmcard <cardId>',
+    description: 'View Pokémon TCG Pocket cards by Pokémon name',
+    usage: 'pkmcard <pokemon>',
     category: 'fun',
     cooldown: 3,
 
     async execute(message, args, client) {
-        const rawCardId = args[0];
+        const query = args.join(' ').trim();
 
-        if (!rawCardId) {
-            return message.reply('Usage: `>>pkmcard <cardId>`');
+        if (!query) {
+            return message.reply('Usage: `>>pkmcard <pokemon>`');
         }
 
-        const cardId = rawCardId.toUpperCase();
-
         try {
-            const card = await PkmnCard.findOne({ cardId });
+            const cards = await searchPocketCards(query);
 
-            if (!card) {
-                return message.reply(`Card #${rawCardId} not found.`);
+            if (!cards.length) {
+                return message.reply(`No Pokémon TCG Pocket cards found matching \`${query}\`.`);
             }
 
-            const owner = await client.users.fetch(card.userId).catch(() => null);
+            let currentIndex = 0;
+            const response = await message.reply({
+                embeds: [buildCardEmbed(cards[currentIndex], currentIndex, cards.length, query)],
+                components: [buildNavButtons(currentIndex, cards.length, false)]
+            });
 
-            return message.reply({
-                embeds: [buildCardEmbed(card, owner)]
+            const collector = message.channel.createMessageComponentCollector({
+                filter: (interaction) => (
+                    interaction.user.id === message.author.id &&
+                    interaction.message.id === response.id
+                ),
+                time: 60000
+            });
+
+            collector.on('collect', async (interaction) => {
+                if (interaction.customId === 'pkm_card_prev') {
+                    currentIndex = Math.max(0, currentIndex - 1);
+                } else if (interaction.customId === 'pkm_card_next') {
+                    currentIndex = Math.min(cards.length - 1, currentIndex + 1);
+                } else if (interaction.customId === 'pkm_card_close') {
+                    await interaction.update({
+                        embeds: [buildCardEmbed(cards[currentIndex], currentIndex, cards.length, query)],
+                        components: [buildNavButtons(currentIndex, cards.length, true)]
+                    });
+                    collector.stop('closed');
+                    return;
+                }
+
+                return interaction.update({
+                    embeds: [buildCardEmbed(cards[currentIndex], currentIndex, cards.length, query)],
+                    components: [buildNavButtons(currentIndex, cards.length, false)]
+                });
+            });
+
+            collector.on('end', async () => {
+                await response.edit({
+                    components: [buildNavButtons(currentIndex, cards.length, true)]
+                }).catch(() => null);
             });
         } catch (error) {
             await logError(client, error, 'pkmcard');
@@ -39,25 +75,41 @@ module.exports = {
     }
 };
 
-function buildCardEmbed(card, owner) {
+function buildCardEmbed(card, index, total, query) {
     return new EmbedBuilder()
         .setColor(getRarityColor(card.rarity))
         .setTitle(card.name || 'Unknown Card')
-        .setImage(card.imageUrl)
+        .setDescription(card.rarity || 'Unknown')
+        .setImage(getImageUrl(card))
         .addFields(
-            { name: 'Rarity', value: card.rarity || 'Common', inline: true },
+            { name: 'Rarity', value: card.rarity || 'Unknown', inline: true },
             { name: 'Set', value: card.setName || card.setId || 'N/A', inline: true },
             { name: 'Card No.', value: card.localId || 'N/A', inline: true },
-            { name: 'Pack', value: card.packId || 'N/A', inline: true },
-            { name: 'Owner', value: formatOwner(card.userId, owner), inline: true }
+            { name: 'TCGdex ID', value: card.id || 'N/A', inline: true }
         )
-        .setFooter({ text: `Card ID: ${card.cardId}  •  Obtained ${card.drawnAt.toDateString()}` });
+        .setFooter({ text: `Card ${index + 1} / ${total}  •  Results for ${query}` });
 }
 
-function formatOwner(userId, owner) {
-    if (owner) {
-        return `${owner.username} (<@${owner.id}>)`;
-    }
+function buildNavButtons(index, total, disabled) {
+    return new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId('pkm_card_prev')
+            .setLabel('⬅')
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(disabled || index === 0),
+        new ButtonBuilder()
+            .setCustomId('pkm_card_next')
+            .setLabel('➡')
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(disabled || index === total - 1),
+        new ButtonBuilder()
+            .setCustomId('pkm_card_close')
+            .setLabel('Close')
+            .setStyle(ButtonStyle.Danger)
+            .setDisabled(disabled)
+    );
+}
 
-    return `<@${userId}>`;
+function getImageUrl(card) {
+    return card.imageUrl || (card.image ? `${card.image}/high.webp` : null);
 }
