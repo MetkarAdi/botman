@@ -27,6 +27,18 @@ module.exports = {
                 await logError(client, error, `interactionCreate — ${interaction.commandName}`);
             }
 
+            if (
+                interaction.guild &&
+                client.whitelistMode?.get(interaction.guild.id) === true &&
+                interaction.user.id !== process.env.OWNER_ID &&
+                !client.bhWhitelist?.get(interaction.guild.id)?.has(interaction.user.id)
+            ) {
+                return interaction.reply({
+                    content: '❌ This server is currently in whitelist mode and you are not whitelisted.',
+                    ephemeral: true
+                });
+            }
+
             let guildData = null;
             if (interaction.guild) {
                 try {
