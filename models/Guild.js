@@ -18,6 +18,10 @@ const guildSchema = new mongoose.Schema({
         type: Boolean,
         default: true
     },
+    summarizeEnabled: {
+        type: Boolean,
+        default: false
+    },
     logChannel: {
         type: String,
         default: null
