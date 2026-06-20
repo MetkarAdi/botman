@@ -21,10 +21,15 @@ module.exports = {
         const arg = args.join(' ').trim();
         if (arg) {
             const member = resolveMember(message, arg);
-            if (!member) {
-                return message.reply('❌ Member not found. Try mentioning them, or providing their username, nickname, or ID.');
+            if (member) {
+                args = [member.id];
+            } else {
+                const idMatch = arg.match(/^<@!?(\d+)>$/)?.[1] || (/^\d{17,20}$/.test(arg) ? arg : null);
+                if (!idMatch) {
+                    return message.reply('❌ Member not found. Try mentioning them, or providing their username, nickname, or ID.');
+                }
+                args = [idMatch];
             }
-            args = [member.id];
         }
 
         let target;
