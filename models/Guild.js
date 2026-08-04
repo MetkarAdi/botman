@@ -12,11 +12,15 @@ const guildSchema = new mongoose.Schema({
     },
     levellingEnabled: {
         type: Boolean,
-        default: true
+        default: false
     },
     moderationEnabled: {
         type: Boolean,
         default: true
+    },
+    summarizeEnabled: {
+        type: Boolean,
+        default: false
     },
     logChannel: {
         type: String,

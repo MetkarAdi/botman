@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const FootballCard = require('../models/FootballCard');
 const FCCooldown = require('../models/FCCooldown');
+const { getChanceLevel } = require('./chanceModifiers');
 const { logCritical } = require('./errorLogger');
 
 const MAX_CHARGES = 5;
@@ -89,7 +90,8 @@ async function drawCard(userId, client) {
         throw new Error('NO_PLAYER');
     }
 
-    const entry = randomItem(client.fcPlayerPool);
+    const chanceLevel = await getChanceLevel(userId);
+    const entry = drawWeightedPlayer(client.fcPlayerPool, chanceLevel);
     const playerId = entry.playerId ?? entry.player?.id;
 
     if (!playerId) {
@@ -295,6 +297,37 @@ function numberOrZero(value) {
 
 function randomItem(items) {
     return items[Math.floor(Math.random() * items.length)];
+}
+
+function drawWeightedPlayer(players, chanceLevel = 0) {
+    const weightedPlayers = players.map((player) => {
+        const rating = player.playerId
+            ? parseRating(player.rating)
+            : parseRating(player.statistics?.[0]?.games?.rating);
+        const rarity = getRarity(rating);
+        const rarityTier = {
+            Basic: 0,
+            Common: 1,
+            Rare: 2,
+            Epic: 3,
+            Legendary: 4
+        }[rarity];
+
+        return {
+            player,
+            weight: 1 + (chanceLevel * rarityTier * 0.25)
+        };
+    });
+
+    const totalWeight = weightedPlayers.reduce((total, entry) => total + entry.weight, 0);
+    let roll = Math.random() * totalWeight;
+
+    for (const entry of weightedPlayers) {
+        roll -= entry.weight;
+        if (roll <= 0) return entry.player;
+    }
+
+    return randomItem(players);
 }
 
 function clamp(value, min, max) {

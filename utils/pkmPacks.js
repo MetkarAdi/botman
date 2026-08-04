@@ -1,7 +1,10 @@
 const PkmnCard = require('../models/PkmnCard');
+const { getChanceLevel } = require('./chanceModifiers');
 
 const TCGDEX_API_BASE = 'https://api.tcgdex.net/v2/en';
 const GOD_PACK_CHANCE = 0.0005;
+const GOD_PACK_CHANCE_PER_LEVEL = 0.0005;
+const MAX_GOD_PACK_CHANCE = 0.02;
 const CARDS_PER_PACK = 5;
 const DEFAULT_RARITY_COLOR = '#95a5a6';
 const DEFAULT_RARITY_WEIGHT = 2;
@@ -241,13 +244,14 @@ async function generatePack(packId, userId) {
         throw new Error(`No cards found for TCGdex set ${pack.setId}`);
     }
 
+    const chanceLevel = await getChanceLevel(userId);
     const cardsByRarity = groupCardsByRarity(cardPool);
     const highRarityCards = cardPool.filter((card) => !['One Diamond', 'Two Diamond'].includes(getCardRarity(card)));
-    const isGodPack = Math.random() < GOD_PACK_CHANCE && highRarityCards.length > 0;
+    const isGodPack = Math.random() < getGodPackChance(chanceLevel) && highRarityCards.length > 0;
     const drawnCards = Array.from({ length: CARDS_PER_PACK }, () => (
         isGodPack
             ? randomItem(highRarityCards)
-            : drawWeightedCard(cardsByRarity)
+            : drawWeightedCard(cardsByRarity, chanceLevel)
     ));
 
     const docs = drawnCards.map((card) => ({
@@ -290,13 +294,13 @@ function groupCardsByRarity(cards) {
     }, new Map());
 }
 
-function drawWeightedCard(cardsByRarity) {
+function drawWeightedCard(cardsByRarity, chanceLevel = 0) {
     const rarityEntries = [...cardsByRarity.entries()]
         .filter(([, cards]) => cards.length > 0)
         .map(([rarity, cards]) => ({
             rarity,
             cards,
-            weight: RARITY_WEIGHTS[rarity] ?? DEFAULT_RARITY_WEIGHT
+            weight: getRarityWeight(rarity, chanceLevel)
         }));
 
     const totalWeight = rarityEntries.reduce((total, entry) => total + entry.weight, 0);
@@ -311,6 +315,31 @@ function drawWeightedCard(cardsByRarity) {
     }
 
     return randomItem(rarityEntries[rarityEntries.length - 1].cards);
+}
+
+function getGodPackChance(chanceLevel) {
+    return Math.min(
+        GOD_PACK_CHANCE + (chanceLevel * GOD_PACK_CHANCE_PER_LEVEL),
+        MAX_GOD_PACK_CHANCE
+    );
+}
+
+function getRarityWeight(rarity, chanceLevel) {
+    const baseWeight = RARITY_WEIGHTS[rarity] ?? DEFAULT_RARITY_WEIGHT;
+    const rarityTier = {
+        'One Diamond': 0,
+        'Two Diamond': 0,
+        'Three Diamond': 1,
+        'Four Diamond': 2,
+        'One Star': 3,
+        'Two Star': 4,
+        'Three Star': 5,
+        'One Shiny': 4,
+        'Two Shiny': 5,
+        Crown: 6
+    }[rarity] ?? 0;
+
+    return baseWeight * (1 + (chanceLevel * rarityTier * 0.25));
 }
 
 function createSet(tcgdexSetId, setName) {
