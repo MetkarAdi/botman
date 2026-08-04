@@ -59,19 +59,15 @@ function buildFullGuildEmbed(guild, vanity = null) {
             { name: '👑 Owner', value: guild.ownerId ? `<@${guild.ownerId}>` : 'Unknown', inline: true },
             { name: '📅 Created', value: createdTimestamp ? `<t:${createdTimestamp}:D>` : 'Unknown', inline: true },
             { name: '🔗 Vanity URL', value: vanity?.code || guild.vanityURLCode ? `discord.gg/${vanity?.code || guild.vanityURLCode}` : 'None', inline: true },
-            { name: '✅ Verified', value: guild.verified ? 'Yes' : 'No', inline: true },
-            { name: '🤝 Partnered', value: guild.partnered ? 'Yes' : 'No', inline: true },
+            { name: '✅ Verified · 🤝 Partnered', value: `${guild.verified ? 'Yes' : 'No'} · ${guild.partnered ? 'Yes' : 'No'}`, inline: true },
             { name: '\u200b', value: '\u200b', inline: false },
             { name: 'Members', value: '\u200b', inline: false },
-            { name: '👥 Total', value: formatCount(totalMembers), inline: true },
-            { name: '🤖 Bots', value: formatCount(botCount), inline: true },
+            { name: '👥 Total · 🤖 Bots', value: `${formatCount(totalMembers)} · ${formatCount(botCount)}`, inline: true },
             { name: '🟢 Online', value: formatCount(onlineCount), inline: true },
             { name: '\u200b', value: '\u200b', inline: false },
             { name: 'Channels', value: '\u200b', inline: false },
-            { name: '💬 Text', value: formatCount(textChannels), inline: true },
-            { name: '🔊 Voice', value: formatCount(voiceChannels), inline: true },
-            { name: '📁 Categories', value: formatCount(categoryChannels), inline: true },
-            { name: '📊 Total', value: formatCount(totalChannels), inline: true },
+            { name: '💬 Text · 🔊 Voice', value: `${formatCount(textChannels)} · ${formatCount(voiceChannels)}`, inline: true },
+            { name: '📁 Categories · 📊 Total', value: `${formatCount(categoryChannels)} · ${formatCount(totalChannels)}`, inline: true },
             { name: '\u200b', value: '\u200b', inline: false },
             { name: 'Boost', value: '\u200b', inline: false },
             { name: '💎 Tier', value: formatCount(boostTier), inline: true },
@@ -85,8 +81,9 @@ function buildFullGuildEmbed(guild, vanity = null) {
         )
         .setTimestamp();
 
-    if (guild.description) embed.addFields({ name: 'Description', value: guild.description.slice(0, 1024), inline: false });
-    if (guild.features?.length) embed.addFields({ name: 'Features', value: guild.features.join(', ').slice(0, 1024), inline: false });
+    // The section layout already uses Discord's 25-field maximum. Keep an
+    // optional server description outside the fields so it cannot overflow.
+    if (guild.description) embed.setDescription(guild.description.slice(0, 4096));
 
     const icon = safeImageUrl(() => guild.iconURL());
     const banner = safeImageUrl(() => guild.bannerURL());
