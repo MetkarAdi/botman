@@ -178,12 +178,14 @@ module.exports = {
         timestamps.set(message.author.id, now);
         setTimeout(() => timestamps.delete(message.author.id), cooldownAmount);
 
+        const start = Date.now();
         try {
             await command.execute(message, args, client, guildData);
         } catch (error) {
-            await logError(client, error, `messageCreate — ${command.name}`);
+            await logError(client, error, `messageCreate — ${command.name}`, message.guild);
             message.reply('❌ An error occurred while running that command.');
         }
+        console.log(`[CMD] ${command.name} · ${Date.now() - start}ms · ${message.guild?.name}`);
     }
 };
 

@@ -99,6 +99,8 @@ async function drawCard(userId, client) {
     }
 
     const card = buildFootballCard(userId, normalizePlayerData(entry));
+    // Determine collection status before persisting this newly drawn card.
+    card.isDuplicate = Boolean(await FootballCard.exists({ userId, playerName: card.playerName }));
 
     cooldown.chargesUsed = (cooldown.chargesUsed || 0) + 1;
     await cooldown.save();
@@ -300,36 +302,37 @@ function randomItem(items) {
 }
 
 function drawWeightedPlayer(players, chanceLevel = 0) {
-    const weightedPlayers = players.map((player) => {
-        const rating = player.playerId
-            ? parseRating(player.rating)
-            : parseRating(player.statistics?.[0]?.games?.rating);
-        const rarity = getRarity(rating);
-        const rarityTier = {
-            Basic: 0,
-            Common: 1,
-            Rare: 2,
-            Epic: 3,
-            Legendary: 4
-        }[rarity];
+    const minimumTier = getMinimumFootballTier(chanceLevel);
+    const eligiblePlayers = players.filter((player) => getFootballRarityTier(player) >= minimumTier);
+    const pool = eligiblePlayers.length ? eligiblePlayers : players;
 
-        return {
-            player,
-            weight: 1 + (chanceLevel * rarityTier * 0.25)
-        };
+    const weightedPlayers = pool.map((player) => {
+        const rarityTier = getFootballRarityTier(player);
+        const weight = 1 + Math.max(0, rarityTier - minimumTier) * chanceLevel * 0.1;
+        return { player, weight };
     });
 
     const totalWeight = weightedPlayers.reduce((total, entry) => total + entry.weight, 0);
     let roll = Math.random() * totalWeight;
-
     for (const entry of weightedPlayers) {
         roll -= entry.weight;
         if (roll <= 0) return entry.player;
     }
-
-    return randomItem(players);
+    return randomItem(pool);
 }
 
+function getFootballRarityTier(player) {
+    const rating = player.playerId ? parseRating(player.rating) : parseRating(player.statistics?.[0]?.games?.rating);
+    const rarity = getRarity(rating);
+    return { Basic: 0, Common: 1, Rare: 2, Epic: 3, Legendary: 4 }[rarity] ?? 0;
+}
+
+function getMinimumFootballTier(chanceLevel) {
+    if (chanceLevel >= 14) return 3; // Epic or Legendary
+    if (chanceLevel >= 9) return 2;  // Rare or better
+    if (chanceLevel >= 4) return 1;  // Common or better
+    return 0;
+}
 function clamp(value, min, max) {
     return Math.min(Math.max(value, min), max);
 }

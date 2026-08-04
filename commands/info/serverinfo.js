@@ -84,6 +84,8 @@ module.exports = {
             1: 'Only @mentions'
         };
 
+        return message.reply({ embeds: [buildFullGuildEmbed(guild, vanity)] });
+
         // Create embed
         const embed = new EmbedBuilder()
             .setTitle(`📊 Server Information - ${guild.name}`)
@@ -220,7 +222,7 @@ module.exports = {
     }
 };
 
-function buildFullGuildEmbed(guild) {
+function buildFullGuildEmbed(guild, vanity = null) {
     const textChannels = guild.channels.cache.filter(c => c.type === ChannelType.GuildText).size;
     const voiceChannels = guild.channels.cache.filter(c => c.type === ChannelType.GuildVoice).size;
     const categoryChannels = guild.channels.cache.filter(c => c.type === ChannelType.GuildCategory).size;
@@ -228,10 +230,7 @@ function buildFullGuildEmbed(guild) {
 
     const totalMembers = guild.members.cache.size || guild.memberCount;
     const botCount = guild.members.cache.filter(m => m.user.bot).size;
-    const humanCount = totalMembers - botCount;
-    const roleCount = guild.roles.cache.size - 1;
-    const emojiCount = guild.emojis.cache.size;
-    const stickerCount = guild.stickers.cache.size;
+    const onlineCount = guild.members.cache.filter(member => member.presence?.status && member.presence.status !== 'offline').size;
 
     const verificationLevels = {
         0: 'None',
@@ -241,46 +240,51 @@ function buildFullGuildEmbed(guild) {
         4: 'Very High'
     };
 
-    const contentFilters = {
-        0: 'Disabled',
-        1: 'Members without roles',
-        2: 'All members'
-    };
-
-    const mfaLevels = {
-        0: 'None',
-        1: 'Elevated'
-    };
+    const notifications = { 0: 'All messages', 1: 'Only @mentions' };
+    const boostCount = Number(guild.premiumSubscriptionCount) || 0;
+    const boostTier = Number(guild.premiumTier) || 0;
+    const boostGoal = [2, 2, 7, 14][boostTier] || 14;
+    const filledSegments = Math.max(0, Math.min(10, Math.round((boostCount / boostGoal) * 10)));
+    const boostProgress = `${'█'.repeat(filledSegments)}${'░'.repeat(10 - filledSegments)}`;
 
     const embed = new EmbedBuilder()
         .setTitle(`Server Information - ${guild.name}`)
         .setThumbnail(guild.iconURL({ dynamic: true, size: 256 }))
-        .setColor('#00FFFF')
+        .setColor('#5865F2')
         .addFields(
-            { name: 'Name', value: guild.name, inline: true },
-            { name: 'ID', value: guild.id, inline: true },
-            { name: 'Owner', value: `<@${guild.ownerId}>`, inline: true },
-            { name: 'Created', value: `<t:${Math.floor(guild.createdTimestamp / 1000)}:D>`, inline: true },
-            { name: 'Members', value: `Total: ${formatNumber(totalMembers)}\nBots: ${formatNumber(botCount)}\nHumans: ${formatNumber(humanCount)}`, inline: true },
-            { name: 'Channels', value: `Text: ${textChannels}\nVoice: ${voiceChannels}\nCategories: ${categoryChannels}\nTotal: ${totalChannels}`, inline: true },
-            { name: 'Roles', value: formatNumber(roleCount), inline: true },
-            { name: 'Emojis', value: formatNumber(emojiCount), inline: true },
-            { name: 'Stickers', value: formatNumber(stickerCount), inline: true },
-            { name: 'Boost Tier', value: `${guild.premiumTier}`, inline: true },
-            { name: 'Boost Count', value: `${guild.premiumSubscriptionCount || 0}`, inline: true },
-            { name: 'Verification', value: verificationLevels[guild.verificationLevel] || `${guild.verificationLevel}`, inline: true },
-            { name: 'Content Filter', value: contentFilters[guild.explicitContentFilter] || `${guild.explicitContentFilter}`, inline: true },
-            { name: 'MFA Level', value: mfaLevels[guild.mfaLevel] || `${guild.mfaLevel}`, inline: true },
-            { name: 'Locale', value: guild.preferredLocale || 'None', inline: true }
+            { name: 'General', value: '\u200b', inline: false },
+            { name: '🆔 ID', value: guild.id, inline: true },
+            { name: '👑 Owner', value: `<@${guild.ownerId}>`, inline: true },
+            { name: '📅 Created', value: `<t:${Math.floor(guild.createdTimestamp / 1000)}:D>`, inline: true },
+            { name: '🔗 Vanity URL', value: guild.vanityURLCode || vanity?.code ? `discord.gg/${guild.vanityURLCode || vanity.code}` : 'None', inline: true },
+            { name: '✅ Verified', value: guild.verified ? 'Yes' : 'No', inline: true },
+            { name: '🤝 Partnered', value: guild.partnered ? 'Yes' : 'No', inline: true },
+            { name: '\u200b', value: '\u200b', inline: false },
+            { name: 'Members', value: '\u200b', inline: false },
+            { name: '👥 Total', value: formatNumber(totalMembers), inline: true },
+            { name: '🤖 Bots', value: formatNumber(botCount), inline: true },
+            { name: '🟢 Online', value: formatNumber(onlineCount), inline: true },
+            { name: '\u200b', value: '\u200b', inline: false },
+            { name: 'Channels', value: '\u200b', inline: false },
+            { name: '💬 Text', value: String(textChannels), inline: true },
+            { name: '🔊 Voice', value: String(voiceChannels), inline: true },
+            { name: '📁 Categories', value: String(categoryChannels), inline: true },
+            { name: '📊 Total', value: String(totalChannels), inline: true },
+            { name: '\u200b', value: '\u200b', inline: false },
+            { name: 'Boost', value: '\u200b', inline: false },
+            { name: '💎 Tier', value: String(boostTier), inline: true },
+            { name: '🚀 Boosts', value: String(boostCount), inline: true },
+            { name: '📈 Progress Bar', value: boostProgress, inline: true },
+            { name: '\u200b', value: '\u200b', inline: false },
+            { name: 'Security', value: '\u200b', inline: false },
+            { name: '🔒 Verification', value: verificationLevels[guild.verificationLevel] || String(guild.verificationLevel), inline: true },
+            { name: '🔞 NSFW Level', value: String(guild.nsfwLevel), inline: true },
+            { name: '🔔 Default Notifications', value: notifications[guild.defaultMessageNotifications] || String(guild.defaultMessageNotifications), inline: true }
         )
         .setTimestamp();
 
     if (guild.description) {
         embed.addFields({ name: 'Description', value: guild.description, inline: false });
-    }
-
-    if (guild.vanityURLCode) {
-        embed.addFields({ name: 'Vanity URL', value: `discord.gg/${guild.vanityURLCode}`, inline: true });
     }
 
     if (guild.features.length > 0) {
@@ -303,7 +307,8 @@ function buildInviteGuildEmbed(invite) {
 
     const embed = new EmbedBuilder()
         .setTitle(`Server Information - ${guild?.name || 'Unknown Server'}`)
-        .setColor('#00FFFF')
+        .setColor('#5865F2')
+        .setDescription('⚠️ **Limited data — bot is not in this server**')
         .addFields(
             { name: 'Name', value: guild?.name || 'Unknown', inline: true },
             { name: 'ID', value: guild?.id || 'Unknown', inline: true },
@@ -311,7 +316,6 @@ function buildInviteGuildEmbed(invite) {
             { name: 'Online', value: presenceCount == null ? 'Unknown' : `${formatNumber(presenceCount)}`, inline: true },
             { name: 'Channel', value: formatInviteChannel(channel), inline: true }
         )
-        .setFooter({ text: '\u26A0\uFE0F Limited data — bot is not in this server' })
         .setTimestamp();
 
     if (invite.expiresTimestamp) {

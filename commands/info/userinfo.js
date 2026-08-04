@@ -89,14 +89,12 @@ module.exports = {
             .setFooter({ text: `Requested by ${message.author.tag}`, iconURL: message.author.displayAvatarURL() })
             .setTimestamp();
 
-        // Add account creation date
         const createdAt = Math.floor(target.createdTimestamp / 1000);
         embed.addFields({
             name: '📅 Account Created',
             value: `<t:${createdAt}:F> (<t:${createdAt}:R>)`,
             inline: false
         });
-
         // If member is in the guild, add more info
         if (member) {
             const joinedAt = Math.floor(member.joinedTimestamp / 1000);
@@ -111,7 +109,6 @@ module.exports = {
                 { name: 'Member Flags', value: memberFlags, inline: true },
                 { name: 'Voice Channel', value: member.voice.channel?.name || 'Not in voice', inline: true }
             );
-
             if (member.communicationDisabledUntil && member.communicationDisabledUntil.getTime() > Date.now()) {
                 const timeoutExpiresAt = member.communicationDisabledUntil.getTime();
                 const timeoutTimestamp = Math.floor(timeoutExpiresAt / 1000);
@@ -130,7 +127,6 @@ module.exports = {
                     inline: true
                 });
             }
-
             const guildAvatarURL = member.avatarURL({ dynamic: true, size: 256 });
             const globalAvatarURL = target.displayAvatarURL({ dynamic: true, size: 256 });
             if (guildAvatarURL && guildAvatarURL !== globalAvatarURL) {
@@ -156,44 +152,22 @@ module.exports = {
                 });
             }
 
-            // Add nickname
             if (member.nickname) {
-                embed.addFields({
-                    name: '🎭 Nickname',
-                    value: member.nickname,
-                    inline: true
-                });
+                embed.addFields({ name: '🎭 Nickname', value: member.nickname, inline: true });
             }
 
-            // Add presence info
             if (member.presence) {
                 const status = member.presence.status;
-                const statusEmojis = {
-                    online: '🟢 Online',
-                    idle: '🟡 Idle',
-                    dnd: '🔴 Do Not Disturb',
-                    offline: '⚫ Offline'
-                };
-                embed.addFields({
-                    name: '📊 Status',
-                    value: statusEmojis[status] || status,
-                    inline: true
-                });
-
-                // Add activity
+                const statusEmojis = { online: '🟢 Online', idle: '🟡 Idle', dnd: '🔴 Do Not Disturb', offline: '⚫ Offline' };
+                embed.addFields({ name: '📊 Status', value: statusEmojis[status] || status, inline: true });
                 const activity = member.presence.activities[0];
                 if (activity) {
                     let activityText = activity.name;
                     if (activity.details) activityText += ` - ${activity.details}`;
                     if (activity.state) activityText += ` (${activity.state})`;
-                    embed.addFields({
-                        name: '🎮 Activity',
-                        value: activityText,
-                        inline: true
-                    });
+                    embed.addFields({ name: '🎮 Activity', value: activityText, inline: true });
                 }
             }
-
             // Add levelling info if enabled
             if (guildData?.levellingEnabled) {
                 try {
@@ -251,16 +225,9 @@ module.exports = {
             embed.setDescription('⚠️ This user is **not in this server**. Showing basic info only.');
         }
 
-        // Show global banner if user has one (requires Nitro)
+        // Keep banners opt-in: they are shown only to the person who presses
+        // the button, rather than being attached to the initial whois embed.
         const bannerURL = target.bannerURL({ dynamic: true, size: 1024 });
-        if (bannerURL) {
-            embed.setImage(bannerURL);
-            embed.addFields({
-                name: 'Global Banner',
-                value: `[Click to view](${bannerURL})`,
-                inline: true
-            });
-        }
 
         // Show accent color if no banner but has one set
         if (!bannerURL && target.accentColor) {
@@ -271,45 +238,34 @@ module.exports = {
             });
         }
 
-        const replyOptions = { embeds: [embed] };
-        if (permissionsRow) {
-            replyOptions.components = [permissionsRow];
+        const buttons = [];
+        if (permissionsRow) buttons.push(permissionsRow.components[0]);
+        if (bannerURL) {
+            buttons.push(new ButtonBuilder()
+                .setCustomId(`whois_banner_${target.id}_${message.author.id}`)
+                .setLabel('Show Banner')
+                .setStyle(ButtonStyle.Primary));
         }
 
-        const response = await message.reply(replyOptions);
+        const componentRow = buttons.length ? new ActionRowBuilder().addComponents(buttons) : null;
+        const response = await message.reply({ embeds: [embed], ...(componentRow ? { components: [componentRow] } : {}) });
 
-        if (permissionsRow) {
+        if (componentRow) {
             const collector = response.createMessageComponentCollector({ time: 60000 });
-
             collector.on('collect', async (interaction) => {
-                if (interaction.customId !== `whois_perms_${target.id}_${message.author.id}`) return;
-
                 if (interaction.user.id !== message.author.id) {
-                    return interaction.reply({
-                        content: 'Only the person who ran this command can view these permissions.',
-                        ephemeral: true
-                    });
+                    return interaction.reply({ content: 'Only the person who ran this command can use these buttons.', ephemeral: true });
                 }
-
-                try {
-                    return await interaction.reply({
-                        content: ` **Key Permissions for ${target.username}:**\n${keyPermissions.join(', ')}`,
-                        ephemeral: true
-                    });
-                } catch (error) {
-                    console.error('Error replying with key permissions:', error);
+                if (interaction.customId === `whois_perms_${target.id}_${message.author.id}`) {
+                    return interaction.reply({ content: ` **Key Permissions for ${target.username}:**\n${keyPermissions.join(', ')}`, ephemeral: true });
+                }
+                if (interaction.customId === `whois_banner_${target.id}_${message.author.id}`) {
+                    return interaction.reply({ embeds: [new EmbedBuilder().setTitle(`${target.username}'s Banner`).setColor(member?.displayHexColor || '#00FFFF').setImage(bannerURL)], ephemeral: true });
                 }
             });
-
             collector.on('end', async () => {
-                const disabledRow = new ActionRowBuilder().addComponents(
-                    ButtonBuilder.from(permissionsRow.components[0]).setDisabled(true)
-                );
-
-                await response.edit({
-                    embeds: [embed],
-                    components: [disabledRow]
-                }).catch(() => null);
+                const disabledRow = new ActionRowBuilder().addComponents(buttons.map(button => ButtonBuilder.from(button).setDisabled(true)));
+                await response.edit({ embeds: [embed], components: [disabledRow] }).catch(() => null);
             });
         }
     }

@@ -4,7 +4,7 @@ const { Client, GatewayIntentBits, Collection, Partials, ActivityType } = requir
 const mongoose = require('mongoose');
 const fs = require('fs');
 const path = require('path');
-const { logCritical } = require('./utils/errorLogger');
+const { logError, logCritical } = require('./utils/errorLogger');
 
 // Create client with necessary intents
 const client = new Client({
@@ -52,7 +52,11 @@ if (!client.config.mongodbUri) {
 // Connect to MongoDB
 async function connectDatabase() {
     try {
-        await mongoose.connect(client.config.mongodbUri).catch(async error => {
+        await mongoose.connect(client.config.mongodbUri, {
+            serverSelectionTimeoutMS: 5000,
+            heartbeatFrequencyMS: 10000,
+            retryWrites: true
+        }).catch(async error => {
             await logCritical(client, error, 'MongoDB Connection');
             throw error;
         });
@@ -62,6 +66,14 @@ async function connectDatabase() {
         process.exit(1);
     }
 }
+
+mongoose.connection.on('disconnected', () => logError(client, new Error('MongoDB disconnected'), 'mongoose'));
+mongoose.connection.on('reconnected', () => console.log('[MongoDB] Reconnected'));
+mongoose.connection.on('error', err => logCritical(client, err, 'mongoose connection error'));
+
+client.rest.on('rateLimited', data => {
+    logError(client, new Error(`Rate limited on ${data.route} for ${data.timeToReset}ms`), 'REST RateLimit');
+});
 
 // Load text commands
 function loadCommands() {

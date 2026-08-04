@@ -40,7 +40,7 @@ module.exports = {
                     interaction.user.id === message.author.id &&
                     interaction.message.id === response.id
                 ),
-                time: 60000
+                time: 1200000
             });
 
             collector.on('collect', async (interaction) => {

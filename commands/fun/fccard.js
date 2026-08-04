@@ -1,6 +1,7 @@
 const { EmbedBuilder } = require('discord.js');
 const { resolveFootballCard } = require('../../utils/fcDraw');
 const { logError } = require('../../utils/errorLogger');
+const { resolveFootballImage } = require('../../utils/footballImage');
 
 const RARITY_COLORS = {
     Basic: '#aaaaaa',
@@ -36,11 +37,11 @@ module.exports = {
             const resolved = await resolveFootballCard(arg, client);
 
             if (resolved?.existingCard) {
-                return message.reply({ embeds: [buildCardEmbed(resolved.existingCard)] });
+                return message.reply({ embeds: [await buildCardEmbed(resolved.existingCard)] });
             }
 
             if (resolved?.playerData) {
-                return message.reply({ embeds: [buildPoolCardEmbed(resolved.playerData)] });
+                return message.reply({ embeds: [await buildPoolCardEmbed(resolved.playerData)] });
             }
 
             return message.reply(`\u274c No card or player found matching ${arg}. Try a player name or card ID.`);
@@ -51,7 +52,7 @@ module.exports = {
     }
 };
 
-function buildCardEmbed(card) {
+async function buildCardEmbed(card) {
     const rarity = card.rarity || getRarity(card.rating);
     const stats = card.stats || {};
     const embed = new EmbedBuilder()
@@ -74,14 +75,13 @@ function buildCardEmbed(card) {
         )
         .setFooter({ text: `${rarity} Card` });
 
-    if (card.playerPhoto) {
-        embed.setThumbnail(card.playerPhoto);
-    }
+    const photo = await resolveFootballImage(card);
+    if (photo) embed.setThumbnail(photo);
 
     return embed;
 }
 
-function buildPoolCardEmbed(player) {
+async function buildPoolCardEmbed(player) {
     const rarity = getRarity(player.rating);
     const stats = player.stats || {};
     const embed = new EmbedBuilder()
@@ -104,9 +104,8 @@ function buildPoolCardEmbed(player) {
         )
         .setFooter({ text: `${rarity} Card` });
 
-    if (player.playerPhoto) {
-        embed.setThumbnail(player.playerPhoto);
-    }
+    const photo = await resolveFootballImage(player);
+    if (photo) embed.setThumbnail(photo);
 
     return embed;
 }

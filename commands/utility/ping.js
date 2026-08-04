@@ -11,9 +11,9 @@ module.exports = {
     async execute(message, args, client) {
         const sent = await message.channel.send('🏓 Pinging...');
 
-        const apiLatency = sent.createdTimestamp - message.createdTimestamp;
+        const botLatency = (sent.createdTimestamp - message.createdTimestamp) / 10;
         const wsLatency = client.ws.ping;
-        const wsLatencyText = wsLatency === -1 ? 'Calculating...' : `${Math.round(wsLatency)}ms`;
+        const apiLatency = wsLatency === -1 ? botLatency : wsLatency / 10;
 
         const getLatencyColor = (latency) => {
             if (latency < 100) return '#00FF00';
@@ -24,18 +24,18 @@ module.exports = {
         const embed = new EmbedBuilder()
             .setTitle('🏓 Pong!')
             .addFields(
-                { name: '🤖 Bot Latency', value: wsLatencyText, inline: true },
-                { name: '📡 API Latency', value: `${apiLatency}ms`, inline: true },
+                { name: '🤖 Bot Latency', value: `${formatLatency(botLatency)}ms`, inline: true },
+                { name: '📡 API Latency', value: `${formatLatency(apiLatency)}ms`, inline: true },
                 { name: '💾 Uptime', value: formatUptime(client.uptime), inline: false }
             )
-            .setColor(getLatencyColor(apiLatency))
+            .setColor(getLatencyColor(botLatency))
             .setTimestamp();
 
         try {
             await sent.edit({ content: null, embeds: [embed] });
         } catch (error) {
             console.error('Error editing ping message:', error);
-            await sent.edit({ content: `🏓 Pong! Bot: ${wsLatencyText} | API: ${apiLatency}ms` });
+            await sent.edit({ content: `🏓 Pong! Bot: ${formatLatency(botLatency)}ms | API: ${formatLatency(apiLatency)}ms` });
         }
     }
 };
@@ -53,4 +53,8 @@ function formatUptime(ms) {
     if (seconds > 0) parts.push(`${seconds}s`);
 
     return parts.join(' ') || '0s';
+}
+
+function formatLatency(value) {
+    return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }

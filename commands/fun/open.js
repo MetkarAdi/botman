@@ -45,21 +45,19 @@ module.exports = {
                 components: [buildOpenButton(message.author.id)]
             });
 
-            await openMsg.edit({
-                components: [buildOpenButton(message.author.id, openMsg.id)]
-            });
-
-            const openCustomId = `pkm_open_${message.author.id}_${openMsg.id}`;
+            const openCustomId = `pkm_open_${message.author.id}`;
             const openCollector = message.channel.createMessageComponentCollector({
                 filter: (interaction) => (
                     interaction.customId === openCustomId &&
                     interaction.user.id === message.author.id
                 ),
-                time: 5 * 60 * 1000,
+                time: 1200000,
                 max: 1
             });
 
             openCollector.on('collect', async (interaction) => {
+                // Acknowledge immediately without editing the opening embed.
+                // This prevents an interaction timeout while the pack is generated.
                 await interaction.deferUpdate();
 
                 await PkmnCooldown.findOneAndUpdate(
@@ -83,7 +81,7 @@ module.exports = {
 
                 const { cards, isGodPack } = result;
                 let currentIndex = 0;
-                let finalEmbed = buildCardEmbed(cards[currentIndex], currentIndex, cards.length);
+                let finalEmbed = buildCardEmbed(cards[currentIndex], currentIndex, cards.length, false, message.author.username);
 
                 await openMsg.edit({
                     embeds: [finalEmbed],
@@ -96,7 +94,7 @@ module.exports = {
                         navInteraction.user.id === message.author.id &&
                         navInteraction.message.id === openMsg.id
                     ),
-                    time: 5 * 60 * 1000
+                    time: 1200000
                 });
 
                 navCollector.on('collect', async (navInteraction) => {
@@ -105,17 +103,19 @@ module.exports = {
                     } else if (navInteraction.customId === 'pkm_nav_next') {
                         currentIndex = Math.min(PACK_SIZE - 1, currentIndex + 1);
                     } else if (navInteraction.customId === 'pkm_nav_close') {
-                        finalEmbed = buildCardEmbed(cards[currentIndex], currentIndex, cards.length, isGodPack);
-                        await navInteraction.update({
-                            embeds: [finalEmbed],
-                            components: [buildNavButtons(currentIndex, PACK_SIZE, true)]
-                        });
+                        await navInteraction.update({ components: [] });
+                        await openMsg.delete().catch(() => null);
                         navCollector.stop('closed');
+                        return;
+                    } else if (navInteraction.customId === 'pkm_nav_done') {
+                        finalEmbed = buildCardEmbed(cards[currentIndex], currentIndex, cards.length, isGodPack, message.author.username);
+                        await navInteraction.update({ embeds: [finalEmbed], components: [buildNavButtons(currentIndex, PACK_SIZE, true)] });
+                        navCollector.stop('done');
                         return;
                     }
 
                     navCollector.resetTimer?.();
-                    finalEmbed = buildCardEmbed(cards[currentIndex], currentIndex, cards.length);
+                    finalEmbed = buildCardEmbed(cards[currentIndex], currentIndex, cards.length, false, message.author.username);
                     await navInteraction.update({
                         embeds: [finalEmbed],
                         components: [buildNavButtons(currentIndex, PACK_SIZE, false)]
@@ -123,7 +123,7 @@ module.exports = {
                 });
 
                 navCollector.on('end', async () => {
-                    finalEmbed = buildCardEmbed(cards[currentIndex], currentIndex, cards.length, isGodPack);
+                    finalEmbed = buildCardEmbed(cards[currentIndex], currentIndex, cards.length, isGodPack, message.author.username);
                     await openMsg.edit({
                         embeds: [finalEmbed],
                         components: [buildNavButtons(currentIndex, PACK_SIZE, true)]
@@ -135,7 +135,7 @@ module.exports = {
                 if (collected.size > 0) return;
 
                 await openMsg.edit({
-                    components: [buildOpenButton(message.author.id, openMsg.id, true)]
+                    components: [buildOpenButton(message.author.id, true)]
                 }).catch(() => null);
             });
         } catch (error) {
@@ -163,8 +163,9 @@ function buildCooldownEmbed(nextOpenAt) {
 
 function buildOpeningEmbed(pack) {
     return new EmbedBuilder()
-        .setColor('#e8d44d')
-        .setTitle(`Opening ${pack.label}...`)
+        .setColor(getPackThemeColor(pack))
+        .setTitle(`${pack.label.replace(/ Pack$/i, '')} Pack`)
+        .setDescription('Press **Open Pack** to reveal your cards')
         .setImage(pack.packArtUrl);
 }
 
@@ -175,27 +176,21 @@ function buildErrorEmbed() {
         .setDescription('Something went wrong while opening this pack.');
 }
 
-function buildCardEmbed(card, index, total, isGodPack = false) {
-    const footerText = `Card ${index + 1} / ${total}${isGodPack ? ' • ✨ This was a God Pack.' : ''}`;
+function buildCardEmbed(card, index, total, isGodPack = false, playerName = 'Player') {
+    const description = `**${card.setName || card.setId || 'Unknown Set'}** · ${card.rarity || 'Unknown'}${isGodPack ? '\n\n✨ You opened a God Pack!' : ''}`;
 
     return new EmbedBuilder()
         .setColor(getRarityColor(card.rarity))
         .setTitle(card.name || 'Unknown Card')
         .setImage(card.imageUrl)
-        .addFields(
-            { name: 'Rarity', value: card.rarity || 'Unknown', inline: true },
-            { name: 'Set', value: card.setName || card.setId || 'N/A', inline: true },
-            { name: 'Card No.', value: card.localId || 'N/A', inline: true }
-        )
-        .setFooter({ text: footerText });
+        .setDescription(description)
+        .setFooter({ text: `Card ${index + 1} / ${total} · ${playerName}'s pack` });
 }
 
-function buildOpenButton(userId, messageId = null, disabled = false) {
-    const customId = messageId ? `pkm_open_${userId}_${messageId}` : `pkm_open_${userId}`;
-
+function buildOpenButton(userId, disabled = false) {
     return new ActionRowBuilder().addComponents(
         new ButtonBuilder()
-            .setCustomId(customId)
+            .setCustomId(`pkm_open_${userId}`)
             .setLabel('Open Pack')
             .setStyle(ButtonStyle.Primary)
             .setDisabled(disabled)
@@ -210,14 +205,22 @@ function buildNavButtons(currentIndex, total, disabled) {
             .setStyle(ButtonStyle.Secondary)
             .setDisabled(disabled || currentIndex === 0),
         new ButtonBuilder()
-            .setCustomId('pkm_nav_next')
-            .setLabel('➡')
-            .setStyle(ButtonStyle.Secondary)
-            .setDisabled(disabled || currentIndex === total - 1),
+            .setCustomId(currentIndex === total - 1 ? 'pkm_nav_done' : 'pkm_nav_next')
+            .setLabel(currentIndex === total - 1 ? 'Done' : 'Next ➡')
+            .setStyle(ButtonStyle.Primary)
+            .setDisabled(disabled),
         new ButtonBuilder()
             .setCustomId('pkm_nav_close')
             .setLabel('Close')
             .setStyle(ButtonStyle.Danger)
             .setDisabled(disabled)
     );
+}
+
+function getPackThemeColor(pack) {
+    const colors = {
+        charizard: '#E74C3C', mewtwo: '#8E44AD', pikachu: '#F1C40F', dialga: '#2980B9',
+        palkia: '#E84393', solgaleo: '#E67E22', lunala: '#5B2C6F', 'ho-oh': '#D35400', lugia: '#3498DB'
+    };
+    return colors[pack.id] || colors[Object.keys(PACKS).find(key => PACKS[key] === pack)] || '#E8D44D';
 }

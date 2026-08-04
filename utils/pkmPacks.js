@@ -2,9 +2,9 @@ const PkmnCard = require('../models/PkmnCard');
 const { getChanceLevel } = require('./chanceModifiers');
 
 const TCGDEX_API_BASE = 'https://api.tcgdex.net/v2/en';
-const GOD_PACK_CHANCE = 0.0005;
-const GOD_PACK_CHANCE_PER_LEVEL = 0.0005;
-const MAX_GOD_PACK_CHANCE = 0.02;
+const GOD_PACK_CHANCE = 0.001;
+const GOD_PACK_CHANCE_PER_LEVEL = 0.0035;
+const MAX_GOD_PACK_CHANCE = 0.15;
 const CARDS_PER_PACK = 5;
 const DEFAULT_RARITY_COLOR = '#95a5a6';
 const DEFAULT_RARITY_WEIGHT = 2;
@@ -248,11 +248,14 @@ async function generatePack(packId, userId) {
     const cardsByRarity = groupCardsByRarity(cardPool);
     const highRarityCards = cardPool.filter((card) => !['One Diamond', 'Two Diamond'].includes(getCardRarity(card)));
     const isGodPack = Math.random() < getGodPackChance(chanceLevel) && highRarityCards.length > 0;
-    const drawnCards = Array.from({ length: CARDS_PER_PACK }, () => (
-        isGodPack
-            ? randomItem(highRarityCards)
-            : drawWeightedCard(cardsByRarity, chanceLevel)
-    ));
+    const guaranteedPremiumCards = getGuaranteedPremiumCardCount(chanceLevel);
+    const premiumCards = cardPool.filter(card => getRarityTier(getCardRarity(card)) >= 3);
+    const premiumCardsByRarity = groupCardsByRarity(premiumCards);
+    const drawnCards = Array.from({ length: CARDS_PER_PACK }, (_, index) => {
+        if (isGodPack) return randomItem(highRarityCards);
+        if (index < guaranteedPremiumCards && premiumCards.length > 0) return drawWeightedCard(premiumCardsByRarity, chanceLevel);
+        return drawWeightedCard(cardsByRarity, chanceLevel);
+    });
 
     const docs = drawnCards.map((card) => ({
         userId,
@@ -317,6 +320,19 @@ function drawWeightedCard(cardsByRarity, chanceLevel = 0) {
     return randomItem(rarityEntries[rarityEntries.length - 1].cards);
 }
 
+function getGuaranteedPremiumCardCount(chanceLevel) {
+    if (chanceLevel >= 20) return 2;
+    if (chanceLevel >= 10) return 1;
+    return 0;
+}
+
+function getRarityTier(rarity) {
+    return {
+        'One Diamond': 0, 'Two Diamond': 1, 'Three Diamond': 2, 'Four Diamond': 3,
+        'One Star': 4, 'Two Star': 5, 'Three Star': 6, 'One Shiny': 5,
+        'Two Shiny': 6, Crown: 7
+    }[rarity] ?? 0;
+}
 function getGodPackChance(chanceLevel) {
     return Math.min(
         GOD_PACK_CHANCE + (chanceLevel * GOD_PACK_CHANCE_PER_LEVEL),

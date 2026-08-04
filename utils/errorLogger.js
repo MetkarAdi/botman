@@ -1,6 +1,6 @@
 const { EmbedBuilder } = require('discord.js');
 
-async function logError(client, error, context) {
+async function logError(client, error, context, guild = null) {
     try {
         const safeError = normalizeError(error);
         console.error(`[Error] ${context}: ${safeError.message}`);
@@ -8,7 +8,7 @@ async function logError(client, error, context) {
         const channel = await getErrorChannel(client);
         if (!channel) return;
 
-        const embed = buildErrorEmbed('#ff9900', '⚠️ Error', safeError, context);
+        const embed = await buildErrorEmbed('#ff9900', '⚠️ Error', safeError, context, client, guild || safeError.guild);
         await channel.send({ content: null, embeds: [embed] });
     } catch (loggerError) {
         console.error('[ErrorLogger] Failed to log error:', loggerError);
@@ -16,7 +16,7 @@ async function logError(client, error, context) {
     }
 }
 
-async function logCritical(client, error, context) {
+async function logCritical(client, error, context, guild = null) {
     try {
         const safeError = normalizeError(error);
         console.error(`[Error] ${context}: ${safeError.message}`);
@@ -24,7 +24,7 @@ async function logCritical(client, error, context) {
         const channel = await getErrorChannel(client);
         if (!channel) return;
 
-        const embed = buildErrorEmbed('#ff0000', 'Critical Error', safeError, context);
+        const embed = await buildErrorEmbed('#ff0000', 'Critical Error', safeError, context, client, guild || safeError.guild);
         await channel.send({ content: `<@${process.env.OWNER_ID}>`, embeds: [embed] });
     } catch (loggerError) {
         console.error('[ErrorLogger] Failed to log critical error:', loggerError);
@@ -40,8 +40,8 @@ async function getErrorChannel(client) {
     return client.channels.fetch(process.env.PING_CHANNEL_ID).catch(() => null);
 }
 
-function buildErrorEmbed(color, title, error, context) {
-    return new EmbedBuilder()
+async function buildErrorEmbed(color, title, error, context, client, guild) {
+    const embed = new EmbedBuilder()
         .setColor(color)
         .setTitle(title)
         .addFields(
@@ -50,6 +50,22 @@ function buildErrorEmbed(color, title, error, context) {
             { name: 'Stack', value: formatStack(error.stack), inline: false }
         )
         .setTimestamp();
+
+    // Error reporting must never fail merely because guild metadata is unavailable.
+    try {
+        const resolvedGuild = client?.guilds?.cache?.get(guild?.id) || guild;
+        if (resolvedGuild?.id) {
+            embed.setFooter({
+                text: `${resolvedGuild.name || 'Unknown Guild'} · ${resolvedGuild.id} · Owner: ${resolvedGuild.ownerId || 'Unknown'}`
+            });
+        } else {
+            embed.setFooter({ text: 'DM / No Guild Context' });
+        }
+    } catch {
+        embed.setFooter({ text: 'DM / No Guild Context' });
+    }
+
+    return embed;
 }
 
 function normalizeError(error) {

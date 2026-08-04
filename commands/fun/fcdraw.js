@@ -2,6 +2,7 @@ const { EmbedBuilder } = require('discord.js');
 const { drawCard, getNextReset, getAvailableCharges } = require('../../utils/fcDraw');
 const FCCooldown = require('../../models/FCCooldown');
 const { logError } = require('../../utils/errorLogger');
+const { resolveFootballImage } = require('../../utils/footballImage');
 
 const RARITY_COLORS = {
     Basic: '#aaaaaa',
@@ -42,7 +43,7 @@ module.exports = {
             }
 
             const card = await drawCard(message.author.id, client);
-            await message.reply({ embeds: [buildCardEmbed(card, message.author.tag)] });
+            await message.reply({ embeds: [await buildCardEmbed(card)] });
 
             const updatedCooldown = await FCCooldown.findOne({ userId: message.author.id });
             const remaining = getAvailableCharges(updatedCooldown);
@@ -62,34 +63,33 @@ module.exports = {
     }
 };
 
-function buildCardEmbed(card, drawnBy) {
+async function buildCardEmbed(card) {
     const rarity = card.rarity || 'Basic';
     const stats = card.stats || {};
     const embed = new EmbedBuilder()
         .setColor(RARITY_COLORS[rarity] || RARITY_COLORS.Basic)
         .setTitle(`${RARITY_EMOJIS[rarity] || RARITY_EMOJIS.Basic} ${formatValue(card.playerName)}`)
         .addFields(
-            { name: 'Club', value: formatValue(card.club), inline: true },
-            { name: 'League', value: formatValue(card.league), inline: true },
-            { name: 'Position', value: formatValue(card.position), inline: true },
-            { name: 'Rating', value: formatValue(card.rating), inline: true },
-            { name: 'Goals', value: formatValue(stats.goals), inline: true },
-            { name: 'Assists', value: formatValue(stats.assists), inline: true },
-            { name: 'Appearances', value: formatValue(stats.appearances), inline: true },
-            { name: 'Key Passes', value: formatValue(stats.keyPasses), inline: true },
-            { name: 'Dribbles', value: formatValue(stats.dribbles), inline: true },
-            { name: 'Yellow Cards', value: formatValue(stats.yellowCards), inline: true },
-            { name: 'Red Cards', value: formatValue(stats.redCards), inline: true },
-            { name: 'Card ID', value: `#${card.cardId}`, inline: true }
+            {
+                name: '⚔️ Attack',
+                value: `⚽ Goals: ${formatValue(stats.goals)} | Assists: ${formatValue(stats.assists)}\nKey Passes: ${formatValue(stats.keyPasses)} | Dribbles: ${formatValue(stats.dribbles)}`,
+                inline: true
+            },
+            {
+                name: '🛡️ Discipline',
+                value: `🟨 Yellow: ${formatValue(stats.yellowCards)} | 🟥 Red: ${formatValue(stats.redCards)}\nAppearances: ${formatValue(stats.appearances)}`,
+                inline: true
+            },
+            { name: '🏟️ Club · League', value: `${formatValue(card.club)} · ${formatValue(card.league)}`, inline: true }
         )
-        .setFooter({ text: `${rarity} Card · Drawn by ${drawnBy}` });
+        .setFooter({ text: `${rarity} Card · #${card.cardId} · ${card.isDuplicate ? 'Duplicate' : 'New!'}` });
 
-    if (card.playerPhoto) {
-        embed.setThumbnail(card.playerPhoto);
-    }
+    const photo = await resolveFootballImage(card);
+    if (photo) embed.setThumbnail(photo);
 
     return embed;
 }
+
 
 function buildCooldownEmbed(errorMessage = null) {
     const parsedReset = Number(errorMessage?.split(':')[1]);

@@ -2,6 +2,17 @@ const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('
 const Giveaway = require('../models/Giveaway');
 const { logError } = require('./errorLogger');
 
+async function withRetry(fn, retries = 3, delay = 1000) {
+    for (let i = 0; i < retries; i++) {
+        try {
+            return await fn();
+        } catch (err) {
+            if (i === retries - 1) throw err;
+            await new Promise(resolve => setTimeout(resolve, delay));
+        }
+    }
+}
+
 // ── Build the giveaway embed ──────────────────────────────────────────────────
 function buildEmbed(giveaway, guild) {
     const endsTimestamp = Math.floor(giveaway.endsAt.getTime() / 1000);
@@ -134,7 +145,7 @@ async function endGiveaway(giveaway, client, reroll = false) {
 
     const winners = pickWinners(giveaway.entries, giveaway.winnerCount);
     giveaway.winners = winners;
-    await giveaway.save();
+    await withRetry(() => giveaway.save());
 
     const guild = client.guilds.cache.get(giveaway.guildId);
     if (!guild) return;
@@ -175,7 +186,7 @@ async function endGiveaway(giveaway, client, reroll = false) {
 function startGiveawayPoller(client) {
     setInterval(async () => {
         try {
-            const due = await Giveaway.find({ ended: false, cancelled: false, endsAt: { $lte: new Date() } });
+            const due = await withRetry(() => Giveaway.find({ ended: false, cancelled: false, endsAt: { $lte: new Date() } }));
             for (const giveaway of due) {
                 await endGiveaway(giveaway, client, false);
             }
@@ -185,4 +196,4 @@ function startGiveawayPoller(client) {
     }, 15 * 1000);
 }
 
-module.exports = { buildEmbed, buildRow, checkRequirements, pickWinners, endGiveaway, startGiveawayPoller };
+module.exports = { buildEmbed, buildRow, checkRequirements, pickWinners, endGiveaway, startGiveawayPoller, withRetry };
