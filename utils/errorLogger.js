@@ -1,4 +1,4 @@
-const { EmbedBuilder } = require('discord.js');
+const { card } = require('./ui');
 
 async function logError(client, error, context, guild = null) {
     try {
@@ -8,8 +8,7 @@ async function logError(client, error, context, guild = null) {
         const channel = await getErrorChannel(client);
         if (!channel) return;
 
-        const embed = await buildErrorEmbed('#ff9900', '⚠️ Error', safeError, context, client, guild || safeError.guild);
-        await channel.send({ content: null, embeds: [embed] });
+        await channel.send(await buildErrorCard('⚠️ Error', safeError, context, client, guild || safeError.guild, 'warning'));
     } catch (loggerError) {
         console.error('[ErrorLogger] Failed to log error:', loggerError);
         console.error('[ErrorLogger] Original error:', error);
@@ -24,8 +23,9 @@ async function logCritical(client, error, context, guild = null) {
         const channel = await getErrorChannel(client);
         if (!channel) return;
 
-        const embed = await buildErrorEmbed('#ff0000', 'Critical Error', safeError, context, client, guild || safeError.guild);
-        await channel.send({ content: `<@${process.env.OWNER_ID}>`, embeds: [embed] });
+        await channel.send(await buildErrorCard(
+            'Critical error', safeError, context, client, guild || safeError.guild, 'danger', `<@${process.env.OWNER_ID}>`
+        ));
     } catch (loggerError) {
         console.error('[ErrorLogger] Failed to log critical error:', loggerError);
         console.error('[ErrorLogger] Original error:', error);
@@ -40,32 +40,28 @@ async function getErrorChannel(client) {
     return client.channels.fetch(process.env.PING_CHANNEL_ID).catch(() => null);
 }
 
-async function buildErrorEmbed(color, title, error, context, client, guild) {
-    const embed = new EmbedBuilder()
-        .setColor(color)
-        .setTitle(title)
-        .addFields(
-            { name: 'Context', value: truncate(context || 'Unknown', 1024), inline: false },
-            { name: 'Message', value: truncate(error.message || 'Unknown error', 1024), inline: false },
-            { name: 'Stack', value: formatStack(error.stack), inline: false }
-        )
-        .setTimestamp();
+async function buildErrorCard(title, error, context, client, guild, tone, mention = '') {
+    const details = [
+        mention,
+        `**Context**\n${truncate(context || 'Unknown', 1024)}`,
+        `**Message**\n${truncate(error.message || 'Unknown error', 1024)}`,
+        `**Stack**\n${formatStack(error.stack)}`
+    ];
+    let footer;
 
     // Error reporting must never fail merely because guild metadata is unavailable.
     try {
         const resolvedGuild = client?.guilds?.cache?.get(guild?.id) || guild;
         if (resolvedGuild?.id) {
-            embed.setFooter({
-                text: `${resolvedGuild.name || 'Unknown Guild'} · ${resolvedGuild.id} · Owner: ${resolvedGuild.ownerId || 'Unknown'}`
-            });
+            footer = `${resolvedGuild.name || 'Unknown Guild'} · ${resolvedGuild.id} · Owner: ${resolvedGuild.ownerId || 'Unknown'}`;
         } else {
-            embed.setFooter({ text: 'DM / No Guild Context' });
+            footer = 'DM / No Guild Context';
         }
     } catch {
-        embed.setFooter({ text: 'DM / No Guild Context' });
+        footer = 'DM / No Guild Context';
     }
 
-    return embed;
+    return card({ title, body: details.filter(Boolean).join('\n\n'), footer, tone });
 }
 
 function normalizeError(error) {

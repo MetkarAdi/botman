@@ -1,10 +1,11 @@
 require('dotenv').config();
 const keepAlive = require('./keepalive');
 const { Client, GatewayIntentBits, Collection, Partials, ActivityType } = require('discord.js');
-const mongoose = require('mongoose');
 const fs = require('fs');
 const path = require('path');
 const { logError, logCritical } = require('./utils/errorLogger');
+const { createDatabaseManager } = require('./utils/database');
+const { installModernUi } = require('./utils/ui');
 
 // Create client with necessary intents
 const client = new Client({
@@ -33,6 +34,8 @@ client.config = {
     mongodbUri: process.env.MONGODB_URI
 };
 
+installModernUi();
+
 // Validate required environment variables
 if (!client.config.token) {
     console.error('❌ BOT_TOKEN is required in .env file');
@@ -49,27 +52,10 @@ if (!client.config.mongodbUri) {
     process.exit(1);
 }
 
-// Connect to MongoDB
-async function connectDatabase() {
-    try {
-        await mongoose.connect(client.config.mongodbUri, {
-            serverSelectionTimeoutMS: 5000,
-            heartbeatFrequencyMS: 10000,
-            retryWrites: true
-        }).catch(async error => {
-            await logCritical(client, error, 'MongoDB Connection');
-            throw error;
-        });
-        console.log('✅ Connected to MongoDB successfully');
-    } catch (error) {
-        console.error('❌ Failed to connect to MongoDB:', error.message);
-        process.exit(1);
-    }
-}
-
-mongoose.connection.on('disconnected', () => logError(client, new Error('MongoDB disconnected'), 'mongoose'));
-mongoose.connection.on('reconnected', () => console.log('[MongoDB] Reconnected'));
-mongoose.connection.on('error', err => logCritical(client, err, 'mongoose connection error'));
+const database = createDatabaseManager(client.config.mongodbUri, {
+    onError: (error, context) => logError(client, error, context),
+    onStatus: message => console.log(message)
+});
 
 client.rest.on('rateLimited', data => {
     logError(client, new Error(`Rate limited on ${data.route} for ${data.timeToReset}ms`), 'REST RateLimit');
@@ -159,7 +145,7 @@ async function init() {
     console.log('🚀 Starting Discord Bot...\n');
     keepAlive();
 
-    await connectDatabase();
+    await database.connect();
     loadCommands();
     loadSlashCommands();
     loadEvents();
@@ -184,6 +170,16 @@ process.on('unhandledRejection', error => logCritical(client, error, 'unhandledR
 process.on('uncaughtException', error => logCritical(client, error, 'uncaughtException'));
 
 client.on('error', error => logCritical(client, error, 'Discord Client'));
+
+async function shutdown(signal) {
+    console.log(`\n[Shutdown] ${signal} received; closing cleanly...`);
+    await database.close();
+    client.destroy();
+    process.exit(0);
+}
+
+process.once('SIGINT', () => shutdown('SIGINT'));
+process.once('SIGTERM', () => shutdown('SIGTERM'));
 
 // Start the bot
 init();

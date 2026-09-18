@@ -62,22 +62,6 @@ const guildSchema = new mongoose.Schema({
         type: [String],
         default: []
     },
-    mafiaCategoryId: {
-        type: String,
-        default: null
-    },
-    mafiaDiscussionTime: {
-        type: Number,
-        default: 150
-    },
-    mafiaNightTime: {
-        type: Number,
-        default: 45
-    },
-    mafiaVoteTime: {
-        type: Number,
-        default: 45
-    }
 }, { timestamps: true });
 
 module.exports = mongoose.model('Guild', guildSchema);

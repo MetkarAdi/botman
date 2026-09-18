@@ -39,7 +39,7 @@ A feature-rich Discord bot with levelling, moderation, logging, and info systems
 - **Help**: Command list and detailed info
 
 ### Fun Commands
-- 8-Ball, Coinflip, Dice Roll
+- 8-Ball, Coinflip, Dice Roll, Pokémon TCG Pocket packs, and football-card collecting
 
 ### Settings
 - Customizable prefix per server

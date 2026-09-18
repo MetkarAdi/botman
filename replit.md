@@ -26,8 +26,8 @@ This is a pure backend Node.js application (no frontend/web UI). It connects to 
 - `index.js` — Entry point; loads commands, slash commands, events, connects to DB, and logs in
 - `commands/` — Text and slash command files organized by category
 - `events/` — Discord event handlers
-- `models/` — Mongoose schemas (Guild, Level, Warning, Giveaway, MafiaGame, etc.)
-- `utils/` — Shared helpers (giveawayManager, mafiaPhases, helpers, etc.)
+- `models/` — Mongoose schemas for server settings, member data, giveaways, and card collections
+- `utils/` — Shared helpers for giveaways, cards, errors, and external services
 
 ## Workflow
 
@@ -35,4 +35,4 @@ This is a pure backend Node.js application (no frontend/web UI). It connects to 
 
 ## Fix Applied
 
-The `models/giveaway.js` and `models/mafiaGame.js` files were renamed to `models/Giveaway.js` and `models/MafiaGame.js` to match the case-sensitive import paths used throughout the codebase on Linux.
+The models use PascalCase filenames to match their import paths on case-sensitive hosts.

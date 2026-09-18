@@ -1,4 +1,4 @@
-const { EmbedBuilder } = require('discord.js');
+const { card } = require('../../utils/ui');
 
 module.exports = {
     name: 'help',
@@ -23,42 +23,25 @@ module.exports = {
                 return message.reply('❌ That command doesn\'t exist!');
             }
 
-            const embed = new EmbedBuilder()
-                .setTitle(`📖 Command: ${command.name}`)
-                .setDescription(command.description || 'No description available.')
-                .setColor('#00FFFF')
-                .addFields(
-                    { name: '📝 Usage', value: `\`${prefix}${command.usage || command.name}\``, inline: false },
-                    { name: '🏷️ Category', value: command.category || 'Uncategorized', inline: true },
-                    { name: '⏱️ Cooldown', value: `${command.cooldown || 3}s`, inline: true }
-                )
-                .setTimestamp();
+            const details = [
+                command.description || 'No description available.',
+                `**📝 Usage**\n\`${prefix}${command.usage || command.name}\``,
+                `**🏷️ Category**\n${command.category || 'Uncategorized'}  •  **⏱️ Cooldown**\n${command.cooldown || 3}s`
+            ];
 
             if (command.aliases && command.aliases.length > 0) {
-                embed.addFields({
-                    name: '🔗 Aliases',
-                    value: command.aliases.map(a => `\`${a}\``).join(', '),
-                    inline: false
-                });
+                details.push(`**🔗 Aliases**\n${command.aliases.map(a => `\`${a}\``).join(', ')}`);
             }
 
             if (command.permissions) {
-                embed.addFields({
-                    name: '🔒 Required Permissions',
-                    value: command.permissions.join(', '),
-                    inline: false
-                });
+                details.push(`**🔒 Required Permissions**\n${command.permissions.join(', ')}`);
             }
 
             if (command.ownerOnly) {
-                embed.addFields({
-                    name: '👑 Owner Only',
-                    value: 'Yes',
-                    inline: true
-                });
+                details.push('**👑 Owner only**\nYes');
             }
 
-            return message.reply({ embeds: [embed] });
+            return message.reply(card({ title: `📖 ${command.name}`, body: details.join('\n\n'), footer: 'Command reference' }));
         }
 
         // Show all prefix commands
@@ -73,12 +56,7 @@ module.exports = {
 
         const commandCount = [...categories.values()].reduce((total, commands) => total + commands.length, 0);
 
-        const embed = new EmbedBuilder()
-            .setTitle('Command List')
-            .setDescription(`Use \`${prefix}help <command>\` for more info on a command.`)
-            .setColor('#00FFFF')
-            .setFooter({ text: `${commandCount} commands available` })
-            .setTimestamp();
+        const sections = [`Use \`${prefix}help <command>\` for details.`];
 
         for (const [category, categoryCommands] of categories) {
             const commands = categoryCommands
@@ -86,15 +64,11 @@ module.exports = {
                 .map(command => `\`${command.name}\``);
 
             if (commands.length > 0) {
-                embed.addFields({
-                    name: `${getCategoryEmoji(category)} ${capitalize(category)} [${commands.length}]`,
-                    value: commands.join(', '),
-                    inline: false
-                });
+                sections.push(`**${getCategoryEmoji(category)} ${capitalize(category)} · ${commands.length}**\n${commands.join(', ')}`);
             }
         }
 
-        message.reply({ embeds: [embed] });
+        message.reply(card({ title: 'Command list', body: sections.join('\n\n'), footer: `${commandCount} commands available` }));
     }
 };
 

@@ -1,5 +1,4 @@
 const Guild = require('../models/Guild');
-const mafiaInteraction = require('./mafiaInteraction');
 const AccessList = require('../models/AccessList');
 const { PermissionFlagsBits } = require('discord.js');
 const { logError } = require('../utils/errorLogger');
@@ -111,23 +110,11 @@ module.exports = {
             }
         } else if (interaction.isButton()) {
             try {
-                if (interaction.customId.startsWith('mafia_')) {
-                    return await mafiaInteraction.execute(interaction, client);
-                }
-
                 if (interaction.customId.startsWith('giveaway_')) {
                     return await require('./giveawayInteraction').execute(interaction, client);
                 }
 
                 if (interaction.customId.startsWith('pkm_')) return;
-            } catch (error) {
-                await logError(client, error, `interactionCreate — ${interaction.customId}`);
-            }
-        } else if (interaction.isStringSelectMenu()) {
-            try {
-                if (interaction.customId.startsWith('mafia_') || interaction.customId.startsWith('mhelp_')) {
-                    return await mafiaInteraction.execute(interaction, client);
-                }
             } catch (error) {
                 await logError(client, error, `interactionCreate — ${interaction.customId}`);
             }
