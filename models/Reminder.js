@@ -5,8 +5,11 @@ const reminderSchema = new mongoose.Schema({
     channelId: { type: String, required: true },
     guildId: { type: String, required: true },
     message: { type: String, required: true },
+    sourceUrl: { type: String, default: null },
     remindAt: { type: Date, required: true },
-    createdAt: { type: Date, default: Date.now }
+    createdAt: { type: Date, default: Date.now },
+    deliveredAt: { type: Date, default: null },
+    snoozedAt: { type: Date, default: null }
 });
 
 reminderSchema.index({ remindAt: 1 });

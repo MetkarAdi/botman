@@ -1,4 +1,4 @@
-const { ActivityType, EmbedBuilder, REST, Routes } = require('discord.js');
+const { ActivityType, REST, Routes } = require('discord.js');
 const Reminder = require('../models/Reminder');
 const DisabledCommand = require('../models/DisabledCommand');
 const GuildDisabled = require('../models/GuildDisabled');
@@ -8,6 +8,7 @@ const { startGiveawayPoller } = require('../utils/giveawayManager');
 const startActivityPing = require('../utils/activityPing');
 const { logError, logCritical } = require('../utils/errorLogger');
 const { buildPlayerPool } = require('../utils/fcDraw');
+const { buildReminderPayload } = require('../utils/reminders');
 
 module.exports = {
     name: 'clientReady',
@@ -123,37 +124,35 @@ function startReminderPoller(client) {
     setInterval(async () => {
         try {
             const now = new Date();
-            const dueReminders = await Reminder.find({ remindAt: { $lte: now } }).limit(20);
+            const dueReminders = await Reminder.find({
+                remindAt: { $lte: now },
+                deliveredAt: null
+            }).limit(20);
 
             for (const reminder of dueReminders) {
                 try {
+                    // Mark first so the next polling pass cannot send duplicates.
+                    const claimed = await Reminder.findOneAndUpdate(
+                        { _id: reminder._id, deliveredAt: null },
+                        { $set: { deliveredAt: new Date() } },
+                        { new: true }
+                    );
+                    if (!claimed) continue;
+
                     const user = await client.users.fetch(reminder.userId);
                     const channel = client.channels.cache.get(reminder.channelId);
 
-                    const embed = new EmbedBuilder()
-                        .setTitle('⏰ Reminder!')
-                        .setDescription(reminder.message)
-                        .addFields({
-                            name: '📅 Set',
-                            value: `<t:${Math.floor(reminder.createdAt.getTime() / 1000)}:R>`,
-                            inline: true
-                        })
-                        .setColor('#00BFFF')
-                        .setTimestamp();
-
                     // Try to DM first, fall back to channel ping
                     try {
-                        await user.send({ embeds: [embed] });
+                        await user.send(buildReminderPayload(claimed));
                     } catch {
                         if (channel) {
-                            await channel.send({ content: `${user} ⏰ Reminder:`, embeds: [embed] });
+                            await channel.send(buildReminderPayload(claimed, { mention: `<@${user.id}>` }));
                         }
                     }
                 } catch (err) {
                     console.error('Failed to deliver reminder:', err);
                 }
-
-                await Reminder.deleteOne({ _id: reminder._id });
             }
         } catch (err) {
             console.error('Reminder poller error:', err);

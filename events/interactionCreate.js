@@ -2,6 +2,8 @@ const Guild = require('../models/Guild');
 const AccessList = require('../models/AccessList');
 const { PermissionFlagsBits } = require('discord.js');
 const { logError } = require('../utils/errorLogger');
+const Reminder = require('../models/Reminder');
+const { buildReminderPayload } = require('../utils/reminders');
 
 module.exports = {
     name: 'interactionCreate',
@@ -110,6 +112,10 @@ module.exports = {
             }
         } else if (interaction.isButton()) {
             try {
+                if (interaction.customId.startsWith('reminder_snooze_')) {
+                    return await snoozeReminder(interaction);
+                }
+
                 if (interaction.customId.startsWith('giveaway_')) {
                     return await require('./giveawayInteraction').execute(interaction, client);
                 }
@@ -121,3 +127,29 @@ module.exports = {
         }
     }
 };
+
+async function snoozeReminder(interaction) {
+    const reminderId = interaction.customId.slice('reminder_snooze_'.length);
+    const reminder = await Reminder.findById(reminderId);
+
+    if (!reminder || reminder.snoozedAt) {
+        return interaction.reply({ content: 'This reminder has already been snoozed or is no longer available.', ephemeral: true });
+    }
+    if (reminder.userId !== interaction.user.id) {
+        return interaction.reply({ content: 'Only the person who set this reminder can snooze it.', ephemeral: true });
+    }
+
+    const snoozedAt = new Date();
+    await Reminder.create({
+        userId: reminder.userId,
+        channelId: reminder.channelId,
+        guildId: reminder.guildId,
+        message: reminder.message,
+        sourceUrl: reminder.sourceUrl,
+        remindAt: new Date(Date.now() + 5 * 60 * 1000)
+    });
+    reminder.snoozedAt = snoozedAt;
+    await reminder.save();
+
+    return interaction.update(buildReminderPayload(reminder, { snoozed: true }));
+}

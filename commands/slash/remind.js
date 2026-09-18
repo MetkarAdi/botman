@@ -6,7 +6,14 @@ module.exports = {
         .addStringOption(o => o.setName('message').setDescription('What to remind you').setRequired(true)),
     category: 'utility',
     async execute(interaction, client, guildData) {
-        const m = { reply: o => interaction.reply(o), author: interaction.user, guild: interaction.guild, channel: interaction.channel, member: interaction.member };
+        const m = {
+            reply: o => interaction.reply(o),
+            author: interaction.user,
+            guild: interaction.guild,
+            channel: interaction.channel,
+            member: interaction.member,
+            url: `https://discord.com/channels/${interaction.guild.id}/${interaction.channel.id}`
+        };
         await cmd.execute(m, [interaction.options.getString('time'), ...interaction.options.getString('message').split(' ')], client, guildData);
     }
 };

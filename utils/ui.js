@@ -4,6 +4,8 @@ const {
     ButtonStyle,
     ContainerBuilder,
     MessageFlags,
+    MediaGalleryBuilder,
+    MediaGalleryItemBuilder,
     SeparatorBuilder,
     SeparatorSpacingSize,
     TextDisplayBuilder,
@@ -74,7 +76,24 @@ function containerFromEmbed(embed, trailingRows = []) {
     const parts = [];
     if (data.description) parts.push(data.description);
     if (Array.isArray(data.fields) && data.fields.length) {
-        parts.push(data.fields.map(field => `**${field.name}**\n${field.value}`).join('\n\n'));
+        const fieldLines = [];
+        let inlineFields = [];
+        const flushInlineFields = () => {
+            if (!inlineFields.length) return;
+            fieldLines.push(inlineFields.map(field => `**${field.name}:** ${field.value}`).join('  •  '));
+            inlineFields = [];
+        };
+        for (const field of data.fields) {
+            if (field.inline) {
+                inlineFields.push(field);
+                if (inlineFields.length === 2) flushInlineFields();
+            } else {
+                flushInlineFields();
+                fieldLines.push(`**${field.name}**\n${field.value}`);
+            }
+        }
+        flushInlineFields();
+        parts.push(fieldLines.join('\n'));
     }
     if (data.footer?.text) parts.push(`-# ${data.footer.text}`);
 
@@ -90,15 +109,15 @@ function containerFromEmbed(embed, trailingRows = []) {
         container.addTextDisplayComponents(text(title));
     }
 
-    for (const part of parts) {
-        if (container.components.length) {
-            container.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small));
-        }
-        container.addTextDisplayComponents(text(part));
+    if (parts.length) {
+        if (title) container.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small));
+        container.addTextDisplayComponents(text(parts.join('\n')));
     }
 
     if (data.image?.url) {
-        container.addTextDisplayComponents(text(`[Open image](${data.image.url})`));
+        container.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(
+            new MediaGalleryItemBuilder().setURL(data.image.url)
+        ));
     }
     if (trailingRows.length) {
         container.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small));

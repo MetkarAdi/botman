@@ -35,6 +35,7 @@ module.exports = {
                 channelId: message.channel.id,
                 guildId: message.guild.id,
                 message: reminderMessage,
+                sourceUrl: message.url || `https://discord.com/channels/${message.guild.id}/${message.channel.id}`,
                 remindAt
             });
 
