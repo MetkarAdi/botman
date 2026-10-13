@@ -145,7 +145,7 @@ function loadEvents() {
 async function init() {
     console.log('🚀 Starting Discord Bot...\n');
     keepAlive();
-    startPerformanceMonitor();
+    startPerformanceMonitor(client);
 
     await database.connect();
     loadCommands();

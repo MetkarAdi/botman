@@ -32,6 +32,31 @@ async function logCritical(client, error, context, guild = null) {
     }
 }
 
+async function logPerformance(client, metrics) {
+    try {
+        const channel = await getErrorChannel(client);
+        const body = [
+            `**CPU**\n${metrics.cpuPercent.toFixed(1)}%`,
+            `**Memory (RSS)**\n${metrics.memoryMb} MB`,
+            `**Event loop p99**\n${metrics.eventLoopP99Ms.toFixed(1)} ms`
+        ].join('\n\n');
+
+        if (!channel) {
+            console.warn(`[Performance] No PING_CHANNEL_ID channel is configured. ${body.replace(/\n/g, ' | ')}`);
+            return;
+        }
+
+        await channel.send(card({
+            title: '📈 Performance',
+            body,
+            footer: 'One-minute process average',
+            tone: 'brand'
+        }));
+    } catch (error) {
+        console.error('[Performance] Failed to send report:', error);
+    }
+}
+
 async function getErrorChannel(client) {
     if (!process.env.PING_CHANNEL_ID || !client?.channels?.fetch) {
         return null;
@@ -88,4 +113,4 @@ function truncate(value, maxLength) {
     return text.length > maxLength ? `${text.slice(0, maxLength - 3)}...` : text;
 }
 
-module.exports = { logError, logCritical };
+module.exports = { logError, logCritical, logPerformance };
