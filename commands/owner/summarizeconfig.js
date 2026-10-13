@@ -1,4 +1,5 @@
 const Guild = require('../../models/Guild');
+const { cacheGuildConfig } = require('../../utils/runtimeCache');
 
 module.exports = {
     name: 'summarizeconfig',
@@ -9,7 +10,7 @@ module.exports = {
     ownerOnly: true,
     cooldown: 5,
 
-    async execute(message, args) {
+    async execute(message, args, client) {
         if (message.author.id !== process.env.OWNER_ID) {
             return message.reply('❌ Owner only.');
         }
@@ -22,20 +23,22 @@ module.exports = {
         }
 
         if (action === 'enable') {
-            await Guild.findOneAndUpdate(
+            const guildData = await Guild.findOneAndUpdate(
                 { guildId },
                 { $set: { summarizeEnabled: true } },
                 { upsert: true, new: true, setDefaultsOnInsert: true }
             );
+            cacheGuildConfig(client, guildData);
             return message.reply(`✅ Conversation summaries have been enabled in guild \`${guildId}\`.`);
         }
 
         if (action === 'disable') {
-            await Guild.findOneAndUpdate(
+            const guildData = await Guild.findOneAndUpdate(
                 { guildId },
                 { $set: { summarizeEnabled: false } },
                 { upsert: true, new: true, setDefaultsOnInsert: true }
             );
+            cacheGuildConfig(client, guildData);
             return message.reply(`✅ Conversation summaries have been disabled in guild \`${guildId}\`.`);
         }
 

@@ -184,7 +184,10 @@ async function endGiveaway(giveaway, client, reroll = false) {
 
 // ── Giveaway poller (checks for ended giveaways) ─────────────────────────────
 function startGiveawayPoller(client) {
+    let running = false;
     setInterval(async () => {
+        if (running) return;
+        running = true;
         try {
             const due = await withRetry(() => Giveaway.find({ ended: false, cancelled: false, endsAt: { $lte: new Date() } }));
             for (const giveaway of due) {
@@ -192,6 +195,8 @@ function startGiveawayPoller(client) {
             }
         } catch (err) {
             await logError(client, err, 'giveawayManager');
+        } finally {
+            running = false;
         }
     }, 15 * 1000);
 }

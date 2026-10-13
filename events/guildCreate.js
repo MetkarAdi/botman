@@ -1,5 +1,6 @@
 const Guild = require('../models/Guild');
 const LogConfig = require('../models/LogConfig');
+const { cacheGuildConfig } = require('../utils/runtimeCache');
 
 module.exports = {
     name: 'guildCreate',
@@ -17,6 +18,7 @@ module.exports = {
                 await guildData.save();
                 console.log(`✅ Created Guild entry for new guild: ${guild.name}`);
             }
+            cacheGuildConfig(client, guildData);
 
             // Create LogConfig entry
             let logConfig = await LogConfig.findOne({ guildId: guild.id });

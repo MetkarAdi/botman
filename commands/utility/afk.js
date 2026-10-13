@@ -1,5 +1,6 @@
 const { EmbedBuilder } = require('discord.js');
 const Afk = require('../../models/Afk');
+const { cacheAfk } = require('../../utils/runtimeCache');
 
 module.exports = {
     name: 'afk',
@@ -17,14 +18,16 @@ module.exports = {
         const existing = await Afk.findOne({ userId: message.author.id, guildId: message.guild.id });
         if (existing) {
             await Afk.deleteOne({ userId: message.author.id, guildId: message.guild.id });
+            cacheAfk(client, message.guild.id, message.author.id, null);
             return message.reply('✅ Your AFK status has been removed.');
         }
 
-        await Afk.findOneAndUpdate(
+        const afk = await Afk.findOneAndUpdate(
             { userId: message.author.id, guildId: message.guild.id },
             { reason, timestamp: new Date() },
             { upsert: true, new: true }
         );
+        cacheAfk(client, message.guild.id, message.author.id, afk);
 
         // Try to update nickname to show AFK
         try {

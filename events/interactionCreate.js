@@ -4,6 +4,7 @@ const { PermissionFlagsBits } = require('discord.js');
 const { logError } = require('../utils/errorLogger');
 const Reminder = require('../models/Reminder');
 const { buildReminderPayload } = require('../utils/reminders');
+const { getGuildConfig, isBlacklisted } = require('../utils/runtimeCache');
 
 module.exports = {
     name: 'interactionCreate',
@@ -17,8 +18,7 @@ module.exports = {
             }
 
             try {
-                const blacklistCheck = await AccessList.findOne({ userId: interaction.user.id, type: 'blacklist' });
-                if (blacklistCheck) {
+                if (await isBlacklisted(client, interaction.user.id)) {
                     return interaction.reply({
                         content: '❌ You have been blacklisted from using this bot.',
                         ephemeral: true
@@ -43,14 +43,7 @@ module.exports = {
             let guildData = null;
             if (interaction.guild) {
                 try {
-                    guildData = await Guild.findOne({ guildId: interaction.guild.id });
-                    if (!guildData) {
-                        guildData = new Guild({
-                            guildId: interaction.guild.id,
-                            prefix: client.config.defaultPrefix
-                        });
-                        await guildData.save();
-                    }
+                    guildData = await getGuildConfig(client, interaction.guild.id);
                 } catch (error) {
                     await logError(client, error, `interactionCreate — ${interaction.commandName}`);
                 }

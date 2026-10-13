@@ -17,10 +17,7 @@ module.exports = {
 
 async function getBotStats(client) {
     const guilds = [...client.guilds.cache.values()];
-    await Promise.all(guilds.map(guild => guild.members.fetch().catch(() => null)));
-    const users = guilds.reduce((total, guild) => (
-        total + guild.members.cache.filter(member => !member.user.bot).size
-    ), 0);
+    const users = guilds.reduce((total, guild) => total + guild.memberCount, 0);
 
     return { servers: guilds.length, users };
 }

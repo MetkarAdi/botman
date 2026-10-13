@@ -1,5 +1,6 @@
 const { EmbedBuilder } = require('discord.js');
 const AccessList = require('../../models/AccessList');
+const { cacheBlacklist } = require('../../utils/runtimeCache');
 
 module.exports = {
     name: 'unblacklist',
@@ -40,6 +41,7 @@ module.exports = {
 
         try {
             await AccessList.deleteOne({ userId: target.id, type: 'blacklist' });
+            cacheBlacklist(client, target.id, false);
 
             const embed = new EmbedBuilder()
                 .setTitle('✅ User Removed from Blacklist')

@@ -1,13 +1,12 @@
-const Guild = require('../models/Guild');
 const LogConfig = require('../models/LogConfig');
 const { EmbedBuilder } = require('discord.js');
+const { getGuildConfig } = require('../utils/runtimeCache');
 
 module.exports = {
     name: 'guildMemberAdd',
     async execute(member, client) {
         try {
-            const guildData = await Guild.findOne({ guildId: member.guild.id });
-            if (!guildData) return;
+            const guildData = await getGuildConfig(client, member.guild.id);
 
             // Handle auto-role
             if (guildData.autoRole) {

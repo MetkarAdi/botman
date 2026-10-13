@@ -6,6 +6,7 @@ const path = require('path');
 const { logError, logCritical } = require('./utils/errorLogger');
 const { createDatabaseManager } = require('./utils/database');
 const { installModernUi } = require('./utils/ui');
+const { startPerformanceMonitor } = require('./utils/performanceMonitor');
 
 // Create client with necessary intents
 const client = new Client({
@@ -144,6 +145,7 @@ function loadEvents() {
 async function init() {
     console.log('🚀 Starting Discord Bot...\n');
     keepAlive();
+    startPerformanceMonitor();
 
     await database.connect();
     loadCommands();

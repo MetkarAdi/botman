@@ -121,7 +121,10 @@ async function registerSlashCommands(client) {
 }
 
 function startReminderPoller(client) {
+    let running = false;
     setInterval(async () => {
+        if (running) return;
+        running = true;
         try {
             const now = new Date();
             const dueReminders = await Reminder.find({
@@ -156,6 +159,8 @@ function startReminderPoller(client) {
             }
         } catch (err) {
             console.error('Reminder poller error:', err);
+        } finally {
+            running = false;
         }
     }, 15 * 1000); // Check every 15 seconds
 }

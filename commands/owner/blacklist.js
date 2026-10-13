@@ -1,5 +1,6 @@
 const { EmbedBuilder } = require('discord.js');
 const AccessList = require('../../models/AccessList');
+const { cacheBlacklist } = require('../../utils/runtimeCache');
 
 module.exports = {
     name: 'blacklist',
@@ -78,6 +79,7 @@ module.exports = {
             });
 
             await blacklist.save();
+            cacheBlacklist(client, target.id, true);
 
             const embed = new EmbedBuilder()
                 .setTitle('🚫 User Blacklisted')

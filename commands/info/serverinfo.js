@@ -21,8 +21,7 @@ module.exports = {
         const target = args[0];
         if (target) {
             try {
-                const guild = await client.guilds.fetch({ guild: target, force: true });
-                await Promise.all([guild.members.fetch(), guild.channels.fetch()]);
+                const guild = client.guilds.cache.get(target) || await client.guilds.fetch(target);
                 return sendFullGuildInfo(message, guild);
             } catch {
                 try {
@@ -34,7 +33,7 @@ module.exports = {
             }
         }
 
-        const guild = await message.guild.fetch();
+        const guild = message.guild;
         const vanity = await guild.fetchVanityData().catch(() => null);
         return sendFullGuildInfo(message, guild, vanity);
     }

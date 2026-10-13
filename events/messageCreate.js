@@ -6,6 +6,7 @@ const Afk = require('../models/Afk');
 const DisabledCommand = require('../models/DisabledCommand');
 const { PermissionFlagsBits, EmbedBuilder } = require('discord.js');
 const { logError } = require('../utils/errorLogger');
+const { getGuildConfig, isBlacklisted, getAfk, cacheAfk } = require('../utils/runtimeCache');
 
 module.exports = {
     name: 'messageCreate',
@@ -18,8 +19,7 @@ module.exports = {
 
         // Check if user is blacklisted (global check)
         try {
-            const blacklistCheck = await AccessList.findOne({ userId: message.author.id, type: 'blacklist' });
-            if (blacklistCheck) return;
+            if (await isBlacklisted(client, message.author.id)) return;
         } catch (error) {
             console.error('Error checking blacklist:', error);
         }
@@ -27,11 +27,7 @@ module.exports = {
         // Get guild settings
         let guildData;
         try {
-            guildData = await Guild.findOne({ guildId: message.guild.id });
-            if (!guildData) {
-                guildData = new Guild({ guildId: message.guild.id, prefix: client.config.defaultPrefix });
-                await guildData.save();
-            }
+            guildData = await getGuildConfig(client, message.guild.id);
         } catch (error) {
             console.error('Error fetching guild data:', error);
             return;
@@ -43,9 +39,10 @@ module.exports = {
 
         // If the sender is AFK and they say something, remove their AFK status
         try {
-            const authorAfk = await Afk.findOne({ userId: message.author.id, guildId: message.guild.id });
+            const authorAfk = await getAfk(client, message.guild.id, message.author.id);
             if (authorAfk) {
                 await Afk.deleteOne({ userId: message.author.id, guildId: message.guild.id });
+                cacheAfk(client, message.guild.id, message.author.id, null);
 
                 // Remove [AFK] from nickname if present
                 try {
@@ -68,7 +65,7 @@ module.exports = {
             for (const [, user] of message.mentions.users) {
                 if (user.id === message.author.id) continue;
                 try {
-                    const afkData = await Afk.findOne({ userId: user.id, guildId: message.guild.id });
+                    const afkData = await getAfk(client, message.guild.id, user.id);
                     if (afkData) {
                         message.reply({
                             content: `💤 **${user.username}** is AFK: ${afkData.reason} — <t:${Math.floor(afkData.timestamp.getTime() / 1000)}:R>`,
@@ -196,17 +193,15 @@ async function handleLevelling(message, guildData) {
     if (member && member.roles.cache.some(role => guildData.ignoredRoles.includes(role.id))) return;
 
     try {
-        let cooldown = await Cooldown.findOne({ userId: message.author.id, guildId: message.guild.id });
-        if (!cooldown) {
-            cooldown = new Cooldown({ userId: message.author.id, guildId: message.guild.id, messageCount: 0 });
-        }
+        const cooldown = await Cooldown.findOneAndUpdate(
+            { userId: message.author.id, guildId: message.guild.id },
+            { $inc: { messageCount: 1 } },
+            { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
 
-        cooldown.messageCount += 1;
-        await cooldown.save();
-
-        if (cooldown.messageCount >= 5) {
-            cooldown.messageCount = 0;
-            await cooldown.save();
+        // The counter is intentionally cumulative: every fifth message earns XP,
+        // exactly as before, while avoiding a second write to reset it to zero.
+        if (cooldown.messageCount % 5 === 0) {
 
             let levelData = await Level.findOne({ userId: message.author.id, guildId: message.guild.id });
             if (!levelData) {
